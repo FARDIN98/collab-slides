@@ -148,7 +148,6 @@ const FullscreenPresentation = ({
                   onSelect={() => {}}
                   onEdit={() => {}}
                   onMove={() => {}}
-                  onResize={() => {}}
                   onContentChange={() => {}}
                   onStopEditing={() => {}}
                   onDelete={() => {}}

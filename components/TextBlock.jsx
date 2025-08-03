@@ -14,7 +14,6 @@ const TextBlock = ({
   onSelect,
   onEdit,
   onMove,
-  onResize,
   onContentChange,
   onStopEditing,
   onDelete,
@@ -34,7 +33,7 @@ const TextBlock = ({
     transform,
     isDragging,
   } = useDraggable({
-    id: `textblock-${id}`,
+    id: id,
     disabled: isEditing || !canEdit,
     data: {
       type: 'textblock',
@@ -108,26 +107,6 @@ const TextBlock = ({
     }
   }, [content, isEditing])
 
-  // Handle key events
-  const handleKeyDown = useCallback((e) => {
-    if (isEditing) {
-      if (e.key === 'Escape') {
-        handleSave()
-      }
-      // Allow normal text editing
-      return
-    }
-
-    if (isSelected && canEdit) {
-      if (e.key === 'Delete' || e.key === 'Backspace') {
-        e.preventDefault()
-        handleDelete()
-      } else if (e.key === 'Enter' || e.key === 'F2') {
-        e.preventDefault()
-        onEdit(id)
-      }
-    }
-  }, [isEditing, isSelected, canEdit, id, onEdit, handleDelete, handleSave])
 
   // Close context menu on outside click
   const handleOutsideClick = useCallback(() => {
@@ -162,7 +141,6 @@ const TextBlock = ({
         onClick={handleClick}
         onDoubleClick={handleDoubleClick}
         onContextMenu={handleContextMenu}
-        onKeyDown={handleKeyDown}
         tabIndex={0}
         {...(!isEditing && canEdit ? { ...attributes, ...listeners } : {})}
       >
@@ -193,7 +171,7 @@ const TextBlock = ({
             <textarea
               value={localContent}
               onChange={handleContentChange}
-              className="w-full h-full pt-8 p-4 border-0 resize-none focus:outline-none rounded-b-lg"
+              className="w-full h-full pt-8 p-4 border-0 focus:outline-none rounded-b-lg"
               placeholder="Enter your text here..."
               autoFocus
             />
@@ -209,7 +187,7 @@ const TextBlock = ({
                 <div>
                   <div className="text-2xl mb-2">📝</div>
                   <div className="text-sm">
-                    {canEdit ? 'Double-click to add text' : 'Empty text block'}
+                    {canEdit ? 'Right click to add text' : 'Empty text block'}
                   </div>
                   {canEdit && (
                     <div className="text-xs mt-1 text-gray-500">
@@ -231,32 +209,7 @@ const TextBlock = ({
             <div className="absolute -bottom-2 -left-2 w-4 h-4 bg-blue-500 border-2 border-white rounded-full shadow-md" />
             <div className="absolute -bottom-2 -right-2 w-4 h-4 bg-blue-500 border-2 border-white rounded-full shadow-md" />
 
-            {/* Action toolbar */}
-            {canEdit && (
-              <div className="absolute -top-10 left-0 bg-gray-800 text-white text-xs px-2 py-1 rounded flex items-center space-x-2 shadow-lg pointer-events-auto">
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    onEdit(id)
-                  }}
-                  className="hover:text-blue-300 flex items-center"
-                  title="Edit (Enter or F2)"
-                >
-                  ✏️ Edit
-                </button>
-                <span className="text-gray-400">|</span>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    handleDelete()
-                  }}
-                  className="hover:text-red-300 flex items-center"
-                  title="Delete (Del or Backspace)"
-                >
-                  🗑️ Delete
-                </button>
-              </div>
-            )}
+            
           </div>
         )}
       </div>
@@ -288,7 +241,7 @@ const TextBlock = ({
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
               </svg>
               <span>Edit Text</span>
-              <span className="text-gray-400 text-xs ml-auto">Enter</span>
+              
             </button>
             <button
               onClick={(e) => {
@@ -301,7 +254,7 @@ const TextBlock = ({
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
               </svg>
               <span>Delete</span>
-              <span className="text-gray-400 text-xs ml-auto">Del</span>
+              
             </button>
           </div>
         </>

@@ -1,38 +1,39 @@
 'use client'
 
-import { useEffect, useState, useCallback, Suspense } from 'react'
+import React, { useEffect, useState, useCallback, Suspense, useMemo } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, DragOverlay } from '@dnd-kit/core'
-import { SortableContext, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable'
-import { CSS } from '@dnd-kit/utilities'
 import { 
   ArrowLeft, 
-  Plus, 
-  X, 
   Play, 
   Menu, 
   Users, 
   User,
   Eye,
+  EyeOff,
   Save,
   MousePointer2,
+  LogOut,
   Grip
 } from 'lucide-react'
+import { DndContext, useDroppable } from '@dnd-kit/core'
 import useAuthStore from '../../stores/authStore'
 import usePresentationStore from '../../stores/presentationStore'
 import TextBlock from '../../components/TextBlock'
+import SlidesPanel from '../../components/SlidesPanel'
 import { Button } from '../../components/ui/button'
 import { Card, CardContent } from '../../components/ui/card'
 import { Badge } from '../../components/ui/badge'
 
 function SlideEditorContent() {
-  const { nickname, hasNickname } = useAuthStore()
+  const { nickname, hasNickname, clearNickname } = useAuthStore()
   const { 
     slides, 
     users, 
+    currentPresentation,
     isLoading, 
     joinPresentation, 
     fetchSlides, 
+    fetchPresentationDetails,
     addSlide, 
     removeSlide, 
     updateSlideContent,
@@ -41,31 +42,46 @@ function SlideEditorContent() {
     subscribeToSlideUpdates,
     unsubscribeFromUserUpdates,
     isCurrentUserCreator,
-    fetchPresentationUsers
+    fetchPresentationUsers,
+    setSlides
   } = usePresentationStore()
   const router = useRouter()
   const searchParams = useSearchParams()
   const presentationId = searchParams.get('id')
   
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true)
-  const [isUsersOpen, setIsUsersOpen] = useState(true)
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false)
+  const [isUsersOpen, setIsUsersOpen] = useState(false) // Initially hidden on mobile
   const [currentSlideIndex, setCurrentSlideIndex] = useState(0)
+
+  // Handle responsive initial states
+  useEffect(() => {
+    const handleResize = () => {
+      const isDesktop = window.innerWidth >= 768 // md breakpoint
+      if (isDesktop) {
+        setIsSidebarOpen(true) // Show left sidebar on desktop
+        setIsUsersOpen(true)   // Show collaborator section on desktop
+      } else {
+        setIsSidebarOpen(false) // Hide left sidebar on mobile
+        setIsUsersOpen(false)   // Hide collaborator section on mobile
+      }
+    }
+
+    // Set initial state
+    handleResize()
+    
+    // Add resize listener
+    window.addEventListener('resize', handleResize)
+    
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
   const [roleChangeLoading, setRoleChangeLoading] = useState(null)
   const [slideActionLoading, setSlideActionLoading] = useState(false)
   const [selectedTextBlockId, setSelectedTextBlockId] = useState(null)
   const [editingTextBlockId, setEditingTextBlockId] = useState(null)
   const [isUpdatingContent, setIsUpdatingContent] = useState(false)
   const [isMounted, setIsMounted] = useState(false)
-  const [activeSlideId, setActiveSlideId] = useState(null)
-
-  // Setup drag and drop sensors
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: {
-        distance: 8,
-      },
-    })
-  )
+  // Optimized current slide content state to prevent unnecessary re-renders
+  const [currentSlideContent, setCurrentSlideContent] = useState(null)
 
   useEffect(() => {
     setIsMounted(true)
@@ -89,6 +105,7 @@ function SlideEditorContent() {
       try {
         await joinPresentation(presentationId, nickname)
         await fetchSlides(presentationId)
+        await fetchPresentationDetails(presentationId)
       } catch (error) {
         console.error('Error initializing presentation:', error)
         router.push('/presentations')
@@ -105,8 +122,48 @@ function SlideEditorContent() {
     }
   }, [isMounted, hasNickname, presentationId, nickname, router, joinPresentation, fetchSlides, subscribeToSlideUpdates, unsubscribeFromUserUpdates])
 
-  const currentSlide = slides[currentSlideIndex] || null
+  // Memoized slides for rendering - only updates when slide structure changes
+  const slidesForRendering = useMemo(() => {
+    if (!Array.isArray(slides)) return []
+    
+    return slides.map(slide => ({
+      id: slide.id,
+      slide_number: slide.slide_number,
+      created_at: slide.created_at
+    }))
+  }, [slides])
+
+  // Sync current slide content with slides array
+  useEffect(() => {
+    if (!Array.isArray(slides) || slides.length === 0) {
+      setCurrentSlideContent(null)
+      return
+    }
+    const currentSlide = slides[currentSlideIndex] || null
+    setCurrentSlideContent(currentSlide?.content_json || null)
+  }, [slides, currentSlideIndex])
+
+  // Get current slide safely
+  const currentSlide = Array.isArray(slides) && slides.length > 0 ? slides[currentSlideIndex] || null : null
   const isCreator = isCurrentUserCreator(presentationId, nickname)
+
+  // Memoized components to prevent unnecessary re-renders
+  const memoizedPresentButton = useMemo(() => {
+    if (!Array.isArray(slidesForRendering) || slidesForRendering.length === 0) return null
+    return (
+      <Button
+        onClick={() => {
+          const currentSlideNumber = currentSlide?.slide_number || 1
+          router.push(`/presentation?id=${presentationId}&slide=${currentSlideNumber}`)
+        }}
+        className="hidden sm:flex bg-green-600 hover:bg-green-700 text-white font-bold"
+        size="sm"
+      >
+        <Play className="w-4 h-4 mr-2" />
+        Present
+      </Button>
+    )
+  }, [slidesForRendering.length, currentSlide?.slide_number, router, presentationId])
 
   const handleRoleChange = async (targetNickname, newRole) => {
     if (!isCreator) return
@@ -114,11 +171,18 @@ function SlideEditorContent() {
     setRoleChangeLoading(targetNickname)
     try {
       await updateUserRole(presentationId, targetNickname, newRole, nickname)
+      // Only fetch users, don't reload slides
+      await fetchPresentationUsers(presentationId)
     } catch (error) {
       console.error('Failed to update role:', error)
     } finally {
       setRoleChangeLoading(null)
     }
+  }
+
+  const handleLogout = () => {
+    clearNickname()
+    router.push('/')
   }
 
   const handleAddSlide = async () => {
@@ -141,8 +205,9 @@ function SlideEditorContent() {
     try {
       await removeSlide(presentationId, slideId, nickname)
       // Adjust current slide index if necessary
-      if (currentSlideIndex >= slides.length - 1) {
-        setCurrentSlideIndex(Math.max(0, slides.length - 2))
+      const slidesLength = Array.isArray(slides) ? slides.length : 0
+      if (currentSlideIndex >= slidesLength - 1) {
+        setCurrentSlideIndex(Math.max(0, slidesLength - 2))
       }
     } catch (error) {
       console.error('Failed to remove slide:', error)
@@ -151,18 +216,26 @@ function SlideEditorContent() {
     }
   }
 
+  const handleSlideSelect = (index) => {
+    setCurrentSlideIndex(index)
+    setSelectedTextBlockId(null)
+    setEditingTextBlockId(null)
+  }
+
   // Text Block Management Functions
-  const getCurrentSlide = () => slides[currentSlideIndex]
+  const getCurrentSlide = () => {
+    if (!Array.isArray(slides) || slides.length === 0) return null
+    return slides[currentSlideIndex]
+  }
   
   const getTextBlocks = () => {
-    const currentSlide = getCurrentSlide()
-    if (!currentSlide?.content_json?.textBlocks) return []
-    return currentSlide.content_json.textBlocks
+    if (!currentSlideContent?.textBlocks) return []
+    return currentSlideContent.textBlocks
   }
 
   const generateTextBlockId = () => `textblock_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
 
-  const handleSlideClick = useCallback((e) => {
+  const handleSlideClick = useCallback(async (e) => {
     // Completely disable slide click for viewers
     if (!canEditSlides(presentationId, nickname) || editingTextBlockId) return
     
@@ -183,14 +256,27 @@ function SlideEditorContent() {
     const updatedTextBlocks = [...currentTextBlocks, newTextBlock]
     
     const updatedContent = {
-      ...currentSlide.content_json,
+      ...currentSlideContent,
       textBlocks: updatedTextBlocks
     }
     
-    updateSlideContent(currentSlide.id, updatedContent, nickname, presentationId)
+    // Optimistic update: immediately update current slide content only
+    const previousContent = currentSlideContent
+    setCurrentSlideContent(updatedContent)
     setSelectedTextBlockId(newTextBlock.id)
     setEditingTextBlockId(newTextBlock.id)
-  }, [canEditSlides, editingTextBlockId, presentationId, currentSlideIndex, slides])
+    
+    try {
+      await updateSlideContent(currentSlide.id, updatedContent, nickname, presentationId)
+      // Note: slides array will be updated automatically via Supabase real-time subscription
+    } catch (error) {
+      console.error('Error creating text block:', error)
+      // Revert optimistic update on error
+      setCurrentSlideContent(previousContent)
+      setSelectedTextBlockId(null)
+      setEditingTextBlockId(null)
+    }
+  }, [canEditSlides, editingTextBlockId, presentationId, nickname, currentSlideContent, currentSlideIndex])
 
   const handleTextBlockSelect = useCallback((textBlockId) => {
     // Disable text block selection for viewers
@@ -216,37 +302,25 @@ function SlideEditorContent() {
     )
     
     const updatedContent = {
-      ...currentSlide.content_json,
+      ...currentSlideContent,
       textBlocks: updatedTextBlocks
     }
     
+    // Optimistic update: immediately update current slide content only
+    const previousContent = currentSlideContent
+    setCurrentSlideContent(updatedContent)
+    
     try {
       await updateSlideContent(currentSlide.id, updatedContent, nickname, presentationId)
+      // Note: slides array will be updated automatically via Supabase real-time subscription
     } catch (error) {
       console.error('Error updating text block position:', error)
+      // Revert optimistic update on error
+      setCurrentSlideContent(previousContent)
     }
-  }, [canEditSlides, presentationId, currentSlideIndex, slides])
+  }, [canEditSlides, presentationId, nickname, currentSlideContent, currentSlideIndex])
 
-  const handleTextBlockResize = useCallback(async (textBlockId, newSize) => {
-    if (!canEditSlides(presentationId, nickname)) return
-    
-    const currentSlide = getCurrentSlide()
-    const currentTextBlocks = getTextBlocks()
-    const updatedTextBlocks = currentTextBlocks.map(block =>
-      block.id === textBlockId ? { ...block, size: newSize } : block
-    )
-    
-    const updatedContent = {
-      ...currentSlide.content_json,
-      textBlocks: updatedTextBlocks
-    }
-    
-    try {
-      await updateSlideContent(currentSlide.id, updatedContent, nickname, presentationId)
-    } catch (error) {
-      console.error('Error updating text block size:', error)
-    }
-  }, [canEditSlides, presentationId, currentSlideIndex, slides])
+
 
   const handleTextBlockContentChange = useCallback(async (textBlockId, newContent) => {
     if (!canEditSlides(presentationId, nickname)) return
@@ -259,18 +333,25 @@ function SlideEditorContent() {
     )
     
     const updatedContent = {
-      ...currentSlide.content_json,
+      ...currentSlideContent,
       textBlocks: updatedTextBlocks
     }
     
+    // Optimistic update: immediately update current slide content only
+    const previousContent = currentSlideContent
+    setCurrentSlideContent(updatedContent)
+    
     try {
       await updateSlideContent(currentSlide.id, updatedContent, nickname, presentationId)
+      // Note: slides array will be updated automatically via Supabase real-time subscription
     } catch (error) {
       console.error('Error updating text block content:', error)
+      // Revert optimistic update on error
+      setCurrentSlideContent(previousContent)
     } finally {
       setIsUpdatingContent(false)
     }
-  }, [canEditSlides, presentationId, currentSlideIndex, slides])
+  }, [canEditSlides, presentationId, nickname, currentSlideContent, currentSlideIndex])
 
   const handleStopEditing = useCallback(() => {
     setEditingTextBlockId(null)
@@ -285,23 +366,31 @@ function SlideEditorContent() {
     const updatedTextBlocks = currentTextBlocks.filter(block => block.id !== textBlockId)
     
     const updatedContent = {
-      ...currentSlide.content_json,
+      ...currentSlideContent,
       textBlocks: updatedTextBlocks
     }
     
+    // Clear selection immediately for better UX
+    if (selectedTextBlockId === textBlockId) {
+      setSelectedTextBlockId(null)
+    }
+    if (editingTextBlockId === textBlockId) {
+      setEditingTextBlockId(null)
+    }
+    
+    // Optimistic update: immediately update current slide content only
+    const previousContent = currentSlideContent
+    setCurrentSlideContent(updatedContent)
+    
     try {
       await updateSlideContent(currentSlide.id, updatedContent, nickname, presentationId)
-      // Clear selection if the deleted block was selected
-      if (selectedTextBlockId === textBlockId) {
-        setSelectedTextBlockId(null)
-      }
-      if (editingTextBlockId === textBlockId) {
-        setEditingTextBlockId(null)
-      }
+      // Note: slides array will be updated automatically via Supabase real-time subscription
     } catch (error) {
       console.error('Error deleting text block:', error)
+      // Revert optimistic update on error
+      setCurrentSlideContent(previousContent)
     }
-  }, [canEditSlides, presentationId, nickname, currentSlideIndex, slides, selectedTextBlockId, editingTextBlockId])
+  }, [canEditSlides, presentationId, nickname, currentSlideContent, currentSlideIndex, selectedTextBlockId, editingTextBlockId])
 
   // Handle clicks outside text blocks
   const handleOutsideClick = useCallback(() => {
@@ -311,148 +400,50 @@ function SlideEditorContent() {
     }
   }, [editingTextBlockId, canEditSlides, presentationId, nickname])
 
-  // SortableSlide component
-  const SortableSlide = ({ slide, index, isActive }) => {
-    const {
-      attributes,
-      listeners,
-      setNodeRef,
-      transform,
-      transition,
-      isDragging,
-    } = useSortable({ 
-       id: `slide-${slide.id}`,
-       disabled: !isCreator
-     })
-
-    const style = {
-      transform: CSS.Transform.toString(transform),
-      transition,
-      opacity: isDragging ? 0.5 : 1,
+  // Handle drag end for text blocks
+  const handleDragEnd = useCallback((event) => {
+    const { active, delta } = event
+    
+    if (!active || !delta || !canEditSlides(presentationId, nickname)) {
+      return
     }
 
+    const textBlockId = active.id
+    const textBlocks = getTextBlocks()
+    const textBlock = textBlocks.find(tb => tb.id === textBlockId)
+    
+    if (!textBlock) {
+      return
+    }
+
+    // Calculate new position based on delta
+    const newPosition = {
+      x: Math.max(0, textBlock.position.x + delta.x),
+      y: Math.max(0, textBlock.position.y + delta.y)
+    }
+
+    // Update the text block position
+    handleTextBlockMove(textBlockId, newPosition)
+  }, [canEditSlides, presentationId, nickname, getTextBlocks, handleTextBlockMove])
+
+  // Droppable slide canvas component
+  const DroppableSlideCanvas = ({ children, ...props }) => {
+    const { setNodeRef } = useDroppable({
+      id: 'slide-canvas'
+    })
+    
     return (
-      <Card
-        ref={setNodeRef}
-        style={style}
-        className={`relative cursor-pointer transition-all group ${
-          currentSlideIndex === index
-            ? 'ring-2 ring-primary bg-primary/5'
-            : 'hover:ring-1 hover:ring-border'
-        } ${isDragging ? 'z-50' : ''}`}
-        {...attributes}
-        {...listeners}
-      >
-        <CardContent className="p-3">
-          <div 
-            onClick={() => setCurrentSlideIndex(index)}
-            className="aspect-video bg-background rounded border border-border flex items-center justify-center relative overflow-hidden"
-          >
-            <span className="text-xs text-muted-foreground">Slide {slide.slide_number}</span>
-            {isCreator && (
-              <Grip className="absolute top-1 left-1 w-3 h-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
-            )}
-          </div>
-          {isCreator && slides.length > 1 && (
-              <Button
-                onClick={(e) => {
-                  e.stopPropagation()
-                  handleRemoveSlide(slide.id)
-                }}
-                disabled={slideActionLoading}
-                variant="destructive"
-                size="icon"
-                className="absolute -top-2 -right-2 w-6 h-6 opacity-0 group-hover:opacity-100 transition-opacity bg-red-600 hover:bg-red-600 text-white font-bold rounded-full border-2 border-red-500"
-              >
-                {slideActionLoading ? (
-                  <div className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin"></div>
-                ) : (
-                  <X className="w-3 h-3 font-bold" />
-                )}
-              </Button>
-            )}
-        </CardContent>
-      </Card>
+      <div ref={setNodeRef} {...props}>
+        {children}
+      </div>
     )
   }
 
-  // Handle drag start
-  const handleDragStart = useCallback((event) => {
-    // Disable drag for viewers
-    if (!canEditSlides(presentationId, nickname)) return
-    
-    const { active } = event
-    
-    if (active.id.toString().startsWith('slide-')) {
-      setActiveSlideId(active.id)
-    } else if (active.id.toString().startsWith('textblock-')) {
-      // Handle text block drag start
-      setSelectedTextBlockId(active.data.current?.textBlockId || null)
-    }
-  }, [canEditSlides, presentationId, nickname])
 
-  // Handle drag end for both slides and text blocks
-  const handleDragEnd = useCallback((event) => {
-    const { active, over, delta } = event
-    
-    setActiveSlideId(null)
-    
-    // Disable drag for viewers
-    if (!canEditSlides(presentationId, nickname) || !active) return
-    
-    const activeId = active.id.toString()
-    
-    // Handle slide reordering
-    if (activeId.startsWith('slide-') && over) {
-      const overId = over.id.toString()
-      if (overId.startsWith('slide-') && activeId !== overId && isCreator) {
-        const activeIndex = slides.findIndex(slide => `slide-${slide.id}` === activeId)
-        const overIndex = slides.findIndex(slide => `slide-${slide.id}` === overId)
-        
-        if (activeIndex !== -1 && overIndex !== -1) {
-          // Reorder slides logic would go here
-          // For now, we'll just log the reorder action
-          console.log(`Reordering slide from ${activeIndex} to ${overIndex}`)
-        }
-      }
-    }
-    
-    // Handle text block movement
-    if (activeId.startsWith('textblock-') && delta) {
-      const textBlockId = active.data.current?.textBlockId
-      
-      if (textBlockId) {
-        // Find the current text block to get its current position
-        const currentTextBlock = getTextBlocks().find(tb => tb.id === textBlockId)
-        
-        if (currentTextBlock) {
-          // Get the slide container to calculate relative position
-          const slideContainer = document.querySelector('.bg-background.rounded-lg.shadow-lg.w-full.max-w-4xl.aspect-video')
-          
-          if (slideContainer) {
-            const slideRect = slideContainer.getBoundingClientRect()
-            
-            // Calculate the actual drop position relative to the slide
-            // We need to get the final position where the element was dropped
-            const finalX = currentTextBlock.position.x + delta.x
-            const finalY = currentTextBlock.position.y + delta.y
-            
-            // Apply boundary constraints using actual text block size
-            const maxX = slideRect.width - currentTextBlock.size.width
-            const maxY = slideRect.height - currentTextBlock.size.height
-            
-            const newPosition = {
-              x: Math.max(0, Math.min(finalX, maxX)),
-              y: Math.max(0, Math.min(finalY, maxY))
-            }
-            
-            // Call the existing handleTextBlockMove function
-            handleTextBlockMove(textBlockId, newPosition)
-          }
-        }
-      }
-    }
-  }, [slides, isCreator, handleTextBlockMove, canEditSlides, presentationId, nickname])
+
+
+
+
 
   if (!isMounted || !hasNickname() || !presentationId) {
     return (
@@ -474,10 +465,12 @@ function SlideEditorContent() {
     )
   }
 
+
+
   return (
     <div className="h-screen bg-background flex flex-col">
       {/* Top Toolbar */}
-      <div className="h-14 bg-background border-b border-border flex items-center px-6 justify-between">
+      <div className="h-14 bg-background border-b border-border flex items-center px-2 md:px-6 justify-between">
         <div className="flex items-center space-x-4">
           <Button
             onClick={() => router.push('/presentations')}
@@ -487,34 +480,45 @@ function SlideEditorContent() {
           >
             <ArrowLeft className="w-4 h-4" />
           </Button>
-          <h1 className="text-lg font-semibold text-foreground">Slide Editor</h1>
+          <div className="flex items-center min-w-0 flex-1 gap-2">
+            {/* Mobile slide toggle icon */}
+            <Button
+              onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+              variant="ghost"
+              size="icon"
+              className="md:hidden h-6 w-6 flex-shrink-0"
+              title={isSidebarOpen ? "Hide Slides" : "Show Slides"}
+            >
+              <Menu className="w-4 h-4" />
+            </Button>
+            
+            <div className="flex flex-col min-w-0 flex-1">
+              <div className="flex items-center gap-2">
+                <h1 className="text-sm md:text-lg font-semibold text-foreground truncate">
+                  {currentPresentation?.name || 'Slide Editor'}
+                </h1>
+                {/* Only show View Only badge when users are loaded and user is confirmed as viewer */}
+                {users.length > 0 && !canEditSlides(presentationId, nickname) && (
+                  <Badge variant="secondary" className="flex items-center gap-1 bg-blue-100 text-blue-800 border-blue-200">
+                    <Eye className="w-3 h-3" />
+                    <span className="text-xs font-medium">View Only</span>
+                  </Badge>
+                )}
+              </div>
+              {currentPresentation?.creator_nickname && (
+                <p className="text-xs text-muted-foreground truncate hidden sm:block">
+                  Created by {currentPresentation.creator_nickname}
+                </p>
+              )}
+            </div>
+          </div>
         </div>
         
         <div className="flex items-center space-x-2">
-          {/* Present Button */}
-          {slides.length > 0 && (
-            <Button
-              onClick={() => {
-                const currentSlideNumber = currentSlide?.slide_number || 1
-                router.push(`/presentation?id=${presentationId}&slide=${currentSlideNumber}`)
-              }}
-              className="hidden sm:flex bg-green-600 hover:bg-green-700 text-white font-bold"
-              size="sm"
-            >
-              <Play className="w-4 h-4 mr-2" />
-              Present
-            </Button>
-          )}
+          {/* Present Button - memoized to prevent re-renders */}
+          {memoizedPresentButton}
           
           {/* Mobile toggle buttons */}
-          <Button
-            onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-            variant="ghost"
-            size="icon"
-            className="md:hidden h-8 w-8"
-          >
-            <Menu className="w-4 h-4" />
-          </Button>
           <Button
             onClick={() => setIsUsersOpen(!isUsersOpen)}
             variant="ghost"
@@ -523,132 +527,67 @@ function SlideEditorContent() {
           >
             <Users className="w-4 h-4" />
           </Button>
-          <Badge variant="outline" className="text-xs bg-slate-100 border-slate-300 text-slate-700 font-medium px-3 py-1">
-            <User className="w-3 h-3 mr-1" />
-            {nickname}
-          </Badge>
+          {/* Fancy User Display with Logout */}
+          <div className="hidden md:flex items-center space-x-3">
+            <div className="flex items-center space-x-2 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg px-3 py-2 shadow-sm hover:shadow-md transition-all duration-200">
+              <div className="w-6 h-6 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center shadow-sm">
+                <User className="w-3 h-3 text-white" />
+              </div>
+              <span className="text-sm font-medium text-gray-700">{nickname}</span>
+            </div>
+            <Button
+              onClick={handleLogout}
+              variant="outline"
+              size="sm"
+              className="h-8 bg-gradient-to-r from-red-50 to-pink-50 border-red-200 text-red-700 hover:from-red-100 hover:to-pink-100 hover:border-red-300 hover:text-red-800 transition-all duration-200 shadow-sm hover:shadow-md"
+            >
+              <LogOut className="w-3 h-3 mr-1" />
+              Log Out
+            </Button>
+          </div>
+          
+          {/* Mobile User Menu */}
+          <div className="md:hidden">
+            <Button
+              onClick={handleLogout}
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              title="Log Out"
+            >
+              <LogOut className="w-4 h-4" />
+            </Button>
+          </div>
         </div>
       </div>
 
       {/* Main Content Area */}
       <div className="flex-1 flex overflow-hidden">
         {/* Left Slides Thumbnails Panel */}
-        <div className={`${isSidebarOpen ? 'w-64' : 'w-0'} md:w-64 bg-background border-r border-border flex flex-col transition-all duration-300 overflow-hidden`}>
-          <div className="p-4 border-b border-border flex items-center justify-between">
-            <h2 className="text-sm font-medium text-foreground">Slides</h2>
-            {isCreator && (
-               <Button
-                 onClick={handleAddSlide}
-                 disabled={slideActionLoading}
-                 size="sm"
-                 className="h-8 bg-blue-600 hover:bg-blue-700 text-white font-bold"
-               >
-                 {slideActionLoading ? (
-                   <div className="w-4 h-4 border border-white border-t-transparent rounded-full animate-spin"></div>
-                 ) : (
-                   <>
-                     <Plus className="w-4 h-4 mr-1" />
-                     Add
-                   </>
-                 )}
-               </Button>
-             )}
-          </div>
-          <div className="flex-1 overflow-y-auto p-3 space-y-3">
-            {isLoading ? (
-              <div className="flex items-center justify-center py-8">
-                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
-              </div>
-            ) : slides.length === 0 ? (
-              <div className="text-center py-8">
-                <p className="text-sm text-muted-foreground mb-3">No slides yet</p>
-                {isCreator && (
-                   <Button 
-                     onClick={handleAddSlide}
-                     disabled={slideActionLoading}
-                     size="sm"
-                     className="bg-blue-600 hover:bg-blue-700 text-white font-bold"
-                   >
-                     {slideActionLoading ? 'Adding...' : 'Add First Slide'}
-                   </Button>
-                 )}
-              </div>
-            ) : isCreator ? (
-              <DndContext
-                sensors={sensors}
-                collisionDetection={closestCenter}
-                onDragStart={handleDragStart}
-                onDragEnd={handleDragEnd}
-              >
-                <SortableContext 
-                  items={slides.map(slide => `slide-${slide.id}`)}
-                  strategy={verticalListSortingStrategy}
-                >
-                  {slides.map((slide, index) => (
-                    <SortableSlide
-                      key={slide.id}
-                      slide={slide}
-                      index={index}
-                      isActive={activeSlideId === `slide-${slide.id}`}
-                    />
-                  ))}
-                </SortableContext>
-                <DragOverlay>
-                  {activeSlideId ? (
-                    <Card className="relative cursor-pointer ring-2 ring-primary bg-primary/5 opacity-90">
-                      <CardContent className="p-3">
-                        <div className="aspect-video bg-background rounded border border-border flex items-center justify-center">
-                          <span className="text-xs text-muted-foreground">Dragging...</span>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ) : null}
-                </DragOverlay>
-              </DndContext>
-            ) : (
-              // Non-draggable slides for viewers and editors
-              slides.map((slide, index) => (
-                <Card
-                  key={slide.id}
-                  className={`relative cursor-pointer transition-all ${
-                    currentSlideIndex === index
-                      ? 'ring-2 ring-primary bg-primary/5'
-                      : 'hover:ring-1 hover:ring-border'
-                  }`}
-                  onClick={() => setCurrentSlideIndex(index)}
-                >
-                  <CardContent className="p-3">
-                    <div className="aspect-video bg-background rounded border border-border flex items-center justify-center">
-                      <span className="text-xs text-muted-foreground">Slide {slide.slide_number}</span>
-                    </div>
-                    <Badge 
-                      variant="secondary" 
-                      className="absolute -top-2 -left-2 text-xs px-1.5 py-0.5"
-                    >
-                      {slide.slide_number}
-                    </Badge>
-                  </CardContent>
-                </Card>
-              ))
-            )}
-          </div>
+        <div className={`${isSidebarOpen ? 'w-64' : 'w-0'} md:${isSidebarOpen ? 'w-64' : 'w-0'} bg-background border-r border-border transition-all duration-300 overflow-hidden`}>
+          <SlidesPanel
+            slides={slidesForRendering}
+            currentSlideIndex={currentSlideIndex}
+            onSlideSelect={handleSlideSelect}
+            onAddSlide={handleAddSlide}
+            onRemoveSlide={handleRemoveSlide}
+            isCreator={isCreator}
+            isLoading={isLoading}
+          />
         </div>
 
         {/* Center Main Slide Canvas */}
-        <div className="flex-1 bg-muted/30 flex items-center justify-center p-6" onClick={handleOutsideClick}>
-          <Card className="w-full max-w-4xl aspect-video relative overflow-hidden shadow-xl">
+        <div className="flex-1 bg-muted/30 flex items-center justify-center p-2 md:p-6" onClick={handleOutsideClick}>
+          <Card className="w-full max-w-4xl aspect-video relative overflow-hidden shadow-xl mx-2 md:mx-0">
             <CardContent className="p-0 h-full">
               {currentSlide ? (
                 canEditSlides(presentationId, nickname) ? (
-                  <DndContext
-                    sensors={sensors}
-                    onDragStart={handleDragStart}
-                    onDragEnd={handleDragEnd}
-                  >
-                    <div 
-                      className="w-full h-full relative cursor-pointer bg-background"
+                  <DndContext onDragEnd={handleDragEnd}>
+                    <DroppableSlideCanvas 
+                      className="w-full h-full relative cursor-pointer bg-background text-sm md:text-base"
                       onClick={handleSlideClick}
-                      style={{ minHeight: '400px' }}
+                      style={{ minHeight: '300px' }}
+                      data-slide-container="true"
                     >
 
                       {/* Loading Indicator */}
@@ -674,7 +613,6 @@ function SlideEditorContent() {
                           onSelect={handleTextBlockSelect}
                           onEdit={handleTextBlockEdit}
                           onMove={handleTextBlockMove}
-                          onResize={handleTextBlockResize}
                           onContentChange={handleTextBlockContentChange}
                           onStopEditing={handleStopEditing}
                           onDelete={handleTextBlockDelete}
@@ -698,24 +636,14 @@ function SlideEditorContent() {
                           </div>
                         </div>
                       )}
-                    </div>
+                    </DroppableSlideCanvas>
                   </DndContext>
                 ) : (
                   <div 
-                    className="w-full h-full relative cursor-default bg-background"
-                    style={{ minHeight: '400px' }}
+                    className="w-full h-full relative cursor-default bg-background text-sm md:text-base"
+                    style={{ minHeight: '300px' }}
                   >
-                    {/* Slide Number Indicator */}
-                    <Badge className="absolute top-4 left-4 z-10">
-                      Slide {currentSlide.slide_number}
-                    </Badge>
-
-                    {/* Viewer Mode Indicator */}
-                    <Badge variant="secondary" className="absolute top-4 right-4 z-10 flex items-center gap-2">
-                      <Eye className="w-3 h-3" />
-                      View Only
-                    </Badge>
-
+                    
                     {/* Text Blocks - Read Only */}
                     {getTextBlocks().map((textBlock, index) => (
                       <TextBlock
@@ -730,7 +658,6 @@ function SlideEditorContent() {
                         onSelect={() => {}}
                         onEdit={() => {}}
                         onMove={() => {}}
-                        onResize={() => {}}
                         onContentChange={() => {}}
                         onStopEditing={() => {}}
                         onDelete={() => {}}
@@ -765,45 +692,62 @@ function SlideEditorContent() {
         </div>
 
         {/* Right Users Panel */}
-        <div className={`${isUsersOpen ? 'w-72' : 'w-0'} md:w-72 bg-background border-l border-border flex flex-col transition-all duration-300 overflow-hidden`}>
-          <div className="relative p-5 border-b border-slate-200/60 bg-gradient-to-r from-slate-50 via-blue-50/30 to-slate-50 backdrop-blur-sm">
+        <div className="flex">
+          {/* Toggle Button */}
+          <div className="flex">
+            <Button
+              onClick={() => setIsUsersOpen(!isUsersOpen)}
+              variant="ghost"
+              size="icon"
+              className="h-full w-8 bg-gradient-to-b from-slate-50 to-slate-100 hover:from-slate-100 hover:to-slate-200 border-l border-border rounded-none shadow-lg hover:shadow-xl transition-all duration-300 flex items-center justify-center"
+              title={isUsersOpen ? "Hide Users" : "Show Users"}
+            >
+              {isUsersOpen ? (
+                <EyeOff className="w-4 h-4 text-slate-600" />
+              ) : (
+                <Eye className="w-4 h-4 text-slate-600" />
+              )}
+            </Button>
+          </div>
+          <div className={`${isUsersOpen ? 'w-72 md:w-72' : 'w-0'} bg-background ${isUsersOpen ? 'border-l border-border' : ''} flex flex-col transition-all duration-300 overflow-hidden`}>
+          <div className="relative p-3 md:p-5 border-b border-slate-200/60 bg-gradient-to-r from-slate-50 via-blue-50/30 to-slate-50 backdrop-blur-sm">
             <div className="absolute inset-0 bg-gradient-to-r from-blue-500/5 to-purple-500/5"></div>
-            <div className="relative flex items-center justify-between">
-              <h2 className="text-lg font-bold text-slate-800 flex items-center gap-3">
-                <div className="relative">
-                  <Users className="w-6 h-6 text-blue-600 drop-shadow-sm" />
-                  <div className="absolute -top-1 -right-1 w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+            <div className="relative flex items-center justify-between gap-2">
+              <h2 className="text-sm md:text-lg font-bold text-slate-800 flex items-center gap-1.5 md:gap-3 min-w-0 flex-1">
+                <div className="relative flex-shrink-0">
+                  <Users className="w-4 h-4 md:w-6 md:h-6 text-blue-600 drop-shadow-sm" />
+                  <div className="absolute -top-1 -right-1 w-1.5 h-1.5 md:w-2 md:h-2 bg-blue-500 rounded-full animate-pulse"></div>
                 </div>
-                <span className="bg-gradient-to-r from-slate-800 to-slate-700 bg-clip-text text-transparent tracking-wide">
-                  Collaborators
+                <span className="bg-gradient-to-r from-slate-800 to-slate-700 bg-clip-text text-transparent tracking-wide truncate">
+                  Users
                 </span>
               </h2>
-              <div className="flex items-center gap-2">
-                <Badge variant="secondary" className="bg-gradient-to-r from-blue-100 to-blue-200 text-blue-800 border-blue-300/60 shadow-lg shadow-blue-200/30 font-semibold px-3 py-1">
-                  <span className="flex items-center gap-1">
-                    <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
-                    {users.length} online
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <Badge variant="secondary" className="bg-gradient-to-r from-blue-100 to-blue-200 text-blue-800 border-blue-300/60 shadow-lg shadow-blue-200/30 font-semibold px-2.5 md:px-3 py-1.5 md:py-1">
+                  <span className="flex items-center gap-1.5 md:gap-1">
+                    <div className="w-2 h-2 md:w-2 md:h-2 bg-blue-500 rounded-full animate-pulse"></div>
+                    <span className="text-sm md:text-sm font-bold">{users.length} online</span>
                   </span>
                 </Badge>
               </div>
             </div>
           </div>
-          <div className="flex-1 overflow-y-auto p-4 space-y-3">
+          <div className="flex-1 overflow-y-auto p-2 md:p-4 space-y-2 md:space-y-3">
             {users.length === 0 ? (
               <div className="text-center py-12">
                 <div className="relative">
                   <div className="absolute inset-0 bg-gradient-to-br from-blue-50 to-purple-50 rounded-full blur-xl opacity-60"></div>
                   <Users className="relative w-12 h-12 mx-auto mb-4 text-slate-400" />
                 </div>
-                <p className="text-sm font-medium text-slate-600 mb-1">No collaborators online</p>
+                <p className="text-sm font-medium text-slate-600 mb-1">No users online</p>
                 <p className="text-xs text-slate-400">Share the link to invite others</p>
               </div>
             ) : (
               users.map((user) => (
                 <div key={user.id} className="group relative">
                   <div className="absolute inset-0 bg-gradient-to-r from-blue-500/10 to-purple-500/10 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300 blur-sm"></div>
-                  <Card className="relative p-4 hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 border border-slate-200/60 hover:border-slate-300/80 bg-gradient-to-br from-white via-slate-50/30 to-white backdrop-blur-sm">
-                    <div className="flex items-center space-x-4">
+                  <Card className="relative p-2 md:p-4 hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 border border-slate-200/60 hover:border-slate-300/80 bg-gradient-to-br from-white via-slate-50/30 to-white backdrop-blur-sm">
+                    <div className="flex items-center space-x-2 md:space-x-4">
                       <div className="relative">
                         <div className={`w-5 h-5 rounded-full flex items-center justify-center shadow-lg ${
                           user.role === 'creator' ? 'bg-gradient-to-br from-blue-500 to-blue-600 shadow-blue-500/30' :
@@ -819,7 +763,7 @@ function SlideEditorContent() {
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-2">
-                          <p className="text-sm font-semibold text-slate-800 truncate group-hover:text-slate-900 transition-colors">{user.nickname}</p>
+                          <p className="text-xs md:text-sm font-semibold text-slate-800 truncate group-hover:text-slate-900 transition-colors">{user.nickname}</p>
                           {user.nickname === nickname && (
                             <Badge variant="outline" className="text-xs bg-gradient-to-r from-blue-50 to-blue-100 text-blue-700 border-blue-200/60 shadow-sm">
                               You
@@ -828,31 +772,31 @@ function SlideEditorContent() {
                         </div>
                         <div className="flex items-center justify-between">
                           {isCreator && user.role !== 'creator' && user.nickname !== nickname ? (
-                            <div className="flex items-center gap-3">
-                              <div className="relative flex bg-gradient-to-r from-slate-50 to-slate-100 rounded-xl p-1.5 border border-slate-200/60 shadow-lg backdrop-blur-sm">
+                            <div className="flex items-center gap-1 md:gap-3">
+                              <div className="relative flex flex-col md:flex-row bg-gradient-to-r from-slate-50 to-slate-100 rounded-xl p-1 md:p-1.5 border border-slate-200/60 shadow-lg backdrop-blur-sm gap-1 md:gap-0">
                                 <div className="absolute inset-0 bg-gradient-to-r from-blue-50/30 to-purple-50/30 rounded-xl"></div>
                                 <button
                                   onClick={() => handleRoleChange(user.nickname, 'viewer')}
                                   disabled={roleChangeLoading === user.nickname}
-                                  className={`relative px-3 py-1.5 text-xs font-semibold rounded-lg transition-all duration-300 flex items-center gap-1.5 transform hover:scale-105 ${
+                                  className={`relative px-2 md:px-3 py-1 md:py-1.5 text-xs font-semibold rounded-lg transition-all duration-300 flex items-center justify-center gap-1 md:gap-1.5 transform hover:scale-105 ${
                                     user.role === 'viewer' 
                                       ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg shadow-blue-500/25 border border-blue-400/50' 
                                       : 'text-slate-600 hover:text-slate-800 hover:bg-white/60 hover:shadow-md'
                                   }`}
                                 >
-                                  <Eye className={`w-3.5 h-3.5 ${user.role === 'viewer' ? 'drop-shadow-sm' : ''}`} />
+                                  <Eye className={`w-3 h-3 md:w-3.5 md:h-3.5 ${user.role === 'viewer' ? 'drop-shadow-sm' : ''}`} />
                                   <span className="tracking-wide">Viewer</span>
                                 </button>
                                 <button
                                   onClick={() => handleRoleChange(user.nickname, 'editor')}
                                   disabled={roleChangeLoading === user.nickname}
-                                  className={`relative px-3 py-1.5 text-xs font-semibold rounded-lg transition-all duration-300 flex items-center gap-1.5 transform hover:scale-105 ${
+                                  className={`relative px-2 md:px-3 py-1 md:py-1.5 text-xs font-semibold rounded-lg transition-all duration-300 flex items-center justify-center gap-1 md:gap-1.5 transform hover:scale-105 ${
                                     user.role === 'editor' 
                                       ? 'bg-gradient-to-r from-emerald-500 to-green-600 text-white shadow-lg shadow-emerald-500/25 border border-emerald-400/50' 
                                       : 'text-slate-600 hover:text-slate-800 hover:bg-white/60 hover:shadow-md'
                                   }`}
                                 >
-                                  <Grip className={`w-3.5 h-3.5 ${user.role === 'editor' ? 'drop-shadow-sm' : ''}`} />
+                                  <Grip className={`w-3 h-3 md:w-3.5 md:h-3.5 ${user.role === 'editor' ? 'drop-shadow-sm' : ''}`} />
                                   <span className="tracking-wide">Editor</span>
                                 </button>
                               </div>
@@ -866,27 +810,27 @@ function SlideEditorContent() {
                           ) : (
                             <Badge 
                               variant="outline" 
-                              className={`text-xs font-semibold shadow-sm backdrop-blur-sm ${
+                              className={`text-xs font-semibold shadow-sm backdrop-blur-sm px-1.5 md:px-2 py-0.5 ${
                                 user.role === 'creator' ? 'bg-gradient-to-r from-blue-50 to-blue-100 text-blue-800 border-blue-300/60 shadow-blue-200/50' :
                                 user.role === 'editor' ? 'bg-gradient-to-r from-emerald-50 to-green-100 text-emerald-800 border-emerald-300/60 shadow-emerald-200/50' :
                                 'bg-gradient-to-r from-slate-50 to-slate-100 text-slate-700 border-slate-300/60 shadow-slate-200/50'
                               }`}
                             >
-                              <span className="flex items-center gap-1">
+                              <span className="flex items-center gap-0.5 md:gap-1">
                                 {user.role === 'creator' ? (
                                   <>
-                                    <span className="text-yellow-500">👑</span>
-                                    <span className="tracking-wide">Creator</span>
+                                    <span className="text-yellow-500 text-xs">👑</span>
+                                    <span className="tracking-wide hidden md:inline">Creator</span>
                                   </>
                                 ) : user.role === 'editor' ? (
                                   <>
-                                    <span className="text-emerald-600">✏️</span>
-                                    <span className="tracking-wide">Editor</span>
+                                    <span className="text-emerald-600 text-xs">✏️</span>
+                                    <span className="tracking-wide hidden md:inline">Editor</span>
                                   </>
                                 ) : (
                                   <>
-                                    <span className="text-blue-600">👁️</span>
-                                    <span className="tracking-wide">Viewer</span>
+                                    <span className="text-blue-600 text-xs">👁️</span>
+                                    <span className="tracking-wide hidden md:inline">Viewer</span>
                                   </>
                                 )}
                               </span>
@@ -900,6 +844,7 @@ function SlideEditorContent() {
               ))
             )}
           </div>
+        </div>
         </div>
       </div>
     </div>

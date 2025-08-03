@@ -5,6 +5,7 @@ const usePresentationStore = create((set, get) => ({
   presentations: [],
   slides: [],
   users: [],
+  currentPresentation: null,
   isLoading: false,
   error: null,
   realtimeSubscription: null,
@@ -141,6 +142,25 @@ const usePresentationStore = create((set, get) => ({
     }
   },
 
+  // Fetch presentation details (title, creator, etc.)
+  fetchPresentationDetails: async (presentationId) => {
+    try {
+      const { data, error } = await supabase
+        .from('presentations')
+        .select('*')
+        .eq('id', presentationId)
+        .single()
+
+      if (error) throw error
+
+      set({ currentPresentation: data })
+      return data
+    } catch (error) {
+      set({ error: error.message })
+      throw error
+    }
+  },
+
   // Fetch slides for a presentation
   fetchSlides: async (presentationId) => {
     set({ isLoading: true, error: null })
@@ -242,7 +262,6 @@ const usePresentationStore = create((set, get) => ({
           filter: `presentation_id=eq.${presentationId}`
         },
         (payload) => {
-          console.log('Realtime update:', payload)
           // Refresh users list when any change occurs
           get().fetchPresentationUsers(presentationId)
         }
@@ -351,6 +370,26 @@ const usePresentationStore = create((set, get) => ({
     }
   },
 
+  // Debounced fetchSlides to prevent excessive re-renders
+  debouncedFetchSlides: null,
+  
+  // Get or create debounced fetchSlides function
+  getDebouncedFetchSlides: () => {
+    if (!get().debouncedFetchSlides) {
+      let timeoutId = null
+      const debouncedFn = (presentationId) => {
+        if (timeoutId) {
+          clearTimeout(timeoutId)
+        }
+        timeoutId = setTimeout(() => {
+          get().fetchSlides(presentationId)
+        }, 300) // 300ms debounce
+      }
+      set({ debouncedFetchSlides: debouncedFn })
+    }
+    return get().debouncedFetchSlides
+  },
+
   // Subscribe to realtime updates for slides
   subscribeToSlideUpdates: (presentationId) => {
     // Note: We'll extend the existing user subscription to include slides
@@ -368,7 +407,6 @@ const usePresentationStore = create((set, get) => ({
           filter: `presentation_id=eq.${presentationId}`
         },
         (payload) => {
-          console.log('User update:', payload)
           // Refresh users list when any change occurs
           get().fetchPresentationUsers(presentationId)
         }
@@ -382,9 +420,9 @@ const usePresentationStore = create((set, get) => ({
           filter: `presentation_id=eq.${presentationId}`
         },
         (payload) => {
-          console.log('Slide update:', payload)
-          // Refresh slides list when any change occurs
-          get().fetchSlides(presentationId)
+          // Use debounced fetchSlides to prevent excessive re-renders
+          const debouncedFetch = get().getDebouncedFetchSlides()
+          debouncedFetch(presentationId)
         }
       )
       .subscribe()
@@ -412,14 +450,7 @@ const usePresentationStore = create((set, get) => ({
 
       if (error) throw error
 
-      // Update local state
-      const { slides } = get()
-      const updatedSlides = slides.map(slide => 
-        slide.id === slideId 
-          ? { ...slide, content_json: contentJson, updated_at: new Date().toISOString() }
-          : slide
-      )
-      set({ slides: updatedSlides })
+      // Note: Local state will be updated automatically via Supabase realtime subscription
 
       return true
     } catch (error) {
@@ -432,6 +463,11 @@ const usePresentationStore = create((set, get) => ({
   canEditSlides: (presentationId, nickname) => {
     const userRole = get().getCurrentUserRole(presentationId, nickname)
     return userRole === 'creator' || userRole === 'editor'
+  },
+
+  // Set slides directly (for optimistic updates)
+  setSlides: (slides) => {
+    set({ slides })
   }
 }))
 
