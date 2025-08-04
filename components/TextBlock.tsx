@@ -1,8 +1,9 @@
 'use client'
 
-import React, { useState, useRef, useEffect } from 'react'
+import React, { useState, useRef, useEffect, useCallback } from 'react'
 import { ForwardRefEditor } from './ForwardRefEditor'
 import { type MDXEditorMethods } from '@mdxeditor/editor'
+import { useHotkeys } from 'react-hotkeys-hook'
 import '@mdxeditor/editor/style.css'
 
 interface TextBlockProps {
@@ -22,6 +23,52 @@ interface TextBlockProps {
   zIndex: number
   canvasRect?: DOMRect
   allTextBlocks?: Array<{ id: string; position: { x: number; y: number }; size: { width: number; height: number } }>
+}
+
+// History management interface
+interface HistoryEntry {
+  content: string
+  timestamp: number
+}
+
+// History management functions
+const getHistoryKey = (textBlockId: string) => `textblock_history_${textBlockId}`
+
+const saveToHistory = (textBlockId: string, content: string) => {
+  const historyKey = getHistoryKey(textBlockId)
+  const existingHistory = JSON.parse(localStorage.getItem(historyKey) || '{"history": [], "currentIndex": -1}')
+  
+  // Don't save if content is the same as current
+  if (existingHistory.history.length > 0 && 
+      existingHistory.history[existingHistory.currentIndex]?.content === content) {
+    return
+  }
+  
+  const newEntry: HistoryEntry = {
+    content,
+    timestamp: Date.now()
+  }
+  
+  // Remove any entries after current index (when we're not at the end)
+  const newHistory = existingHistory.history.slice(0, existingHistory.currentIndex + 1)
+  newHistory.push(newEntry)
+  
+  // Keep only last 50 entries to prevent localStorage bloat
+  if (newHistory.length > 50) {
+    newHistory.shift()
+  } else {
+    existingHistory.currentIndex++
+  }
+  
+  localStorage.setItem(historyKey, JSON.stringify({
+    history: newHistory,
+    currentIndex: Math.min(existingHistory.currentIndex, newHistory.length - 1)
+  }))
+}
+
+const getHistoryState = (textBlockId: string) => {
+  const historyKey = getHistoryKey(textBlockId)
+  return JSON.parse(localStorage.getItem(historyKey) || '{"history": [], "currentIndex": -1}')
 }
 
 export default function TextBlock({
@@ -50,6 +97,85 @@ export default function TextBlock({
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const blockRef = useRef<HTMLDivElement>(null)
   const mdxEditorRef = useRef<MDXEditorMethods>(null)
+  
+  // History management state
+  const [historyState, setHistoryState] = useState(() => getHistoryState(id))
+  const lastSavedContentRef = useRef(content)
+
+  // Undo/Redo functions
+  const performUndo = useCallback(() => {
+    if (!isEditing || !canEdit) return
+    
+    const currentHistory = getHistoryState(id)
+    if (currentHistory.currentIndex > 0) {
+      const newIndex = currentHistory.currentIndex - 1
+      const previousEntry = currentHistory.history[newIndex]
+      
+      if (previousEntry) {
+        setLocalContent(previousEntry.content)
+        if (mdxEditorRef.current) {
+          mdxEditorRef.current.setMarkdown(previousEntry.content)
+        }
+        
+        // Update localStorage
+        localStorage.setItem(getHistoryKey(id), JSON.stringify({
+          ...currentHistory,
+          currentIndex: newIndex
+        }))
+        
+        setHistoryState({ ...currentHistory, currentIndex: newIndex })
+      }
+    }
+  }, [id, isEditing, canEdit])
+
+  const performRedo = useCallback(() => {
+    if (!isEditing || !canEdit) return
+    
+    const currentHistory = getHistoryState(id)
+    if (currentHistory.currentIndex < currentHistory.history.length - 1) {
+      const newIndex = currentHistory.currentIndex + 1
+      const nextEntry = currentHistory.history[newIndex]
+      
+      if (nextEntry) {
+        setLocalContent(nextEntry.content)
+        if (mdxEditorRef.current) {
+          mdxEditorRef.current.setMarkdown(nextEntry.content)
+        }
+        
+        // Update localStorage
+        localStorage.setItem(getHistoryKey(id), JSON.stringify({
+          ...currentHistory,
+          currentIndex: newIndex
+        }))
+        
+        setHistoryState({ ...currentHistory, currentIndex: newIndex })
+      }
+    }
+  }, [id, isEditing, canEdit])
+
+  // Keyboard shortcuts for undo/redo - only active when editing this specific text block
+  useHotkeys('ctrl+z', performUndo, {
+    enabled: isEditing && canEdit,
+    preventDefault: true,
+    enableOnFormTags: ['input', 'textarea'],
+    enableOnContentEditable: true
+  }, [isEditing, canEdit, performUndo])
+
+  useHotkeys('ctrl+y', performRedo, {
+    enabled: isEditing && canEdit,
+    preventDefault: true,
+    enableOnFormTags: ['input', 'textarea'],
+    enableOnContentEditable: true
+  }, [isEditing, canEdit, performRedo])
+
+  // Save content to history when content changes (debounced)
+  const saveContentToHistory = useCallback((newContent: string) => {
+    if (newContent !== lastSavedContentRef.current) {
+      saveToHistory(id, newContent)
+      lastSavedContentRef.current = newContent
+      setHistoryState(getHistoryState(id))
+    }
+  }, [id])
 
   // Check if a position/size would overlap with other text blocks
   const checkOverlap = (newPos: { x: number; y: number }, newSize: { width: number; height: number }) => {
@@ -74,13 +200,22 @@ export default function TextBlock({
     setLocalContent(content)
   }, [content])
 
-  // Focus textarea when editing starts
+  // Initialize history and focus when editing starts
   useEffect(() => {
-    if (isEditing && textareaRef.current) {
-      textareaRef.current.focus()
-      textareaRef.current.select()
+    if (isEditing) {
+      // Initialize history with current content if not already present
+      const currentHistory = getHistoryState(id)
+      if (currentHistory.history.length === 0) {
+        saveToHistory(id, content)
+        setHistoryState(getHistoryState(id))
+      }
+      
+      if (textareaRef.current) {
+        textareaRef.current.focus()
+        textareaRef.current.select()
+      }
     }
-  }, [isEditing])
+  }, [isEditing, id, content])
 
   const handleMouseDown = (e: React.MouseEvent) => {
     if (!canEdit || isEditing) return
@@ -163,6 +298,15 @@ export default function TextBlock({
     }
   }, [isDragging, dragStart, position, size, canvasRect])
 
+  // Cleanup debounce timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (debounceTimeoutRef.current) {
+        clearTimeout(debounceTimeoutRef.current)
+      }
+    }
+  }, [])
+
 
 
   const handleClick = (e: React.MouseEvent) => {
@@ -179,12 +323,32 @@ export default function TextBlock({
     }
   }
 
+  // Debounced history saving
+  const debounceTimeoutRef = useRef<NodeJS.Timeout>()
+  
   const handleContentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setLocalContent(e.target.value)
+    const newContent = e.target.value
+    setLocalContent(newContent)
+    
+    // Debounce history saving to avoid too many entries
+    if (debounceTimeoutRef.current) {
+      clearTimeout(debounceTimeoutRef.current)
+    }
+    debounceTimeoutRef.current = setTimeout(() => {
+      saveContentToHistory(newContent)
+    }, 1000) // Save to history after 1 second of no changes
   }
 
   const handleMDXContentChange = (markdown: string) => {
     setLocalContent(markdown)
+    
+    // Debounce history saving to avoid too many entries
+    if (debounceTimeoutRef.current) {
+      clearTimeout(debounceTimeoutRef.current)
+    }
+    debounceTimeoutRef.current = setTimeout(() => {
+      saveContentToHistory(markdown)
+    }, 1000) // Save to history after 1 second of no changes
   }
 
   const handleSave = (e: React.MouseEvent) => {
@@ -262,6 +426,34 @@ export default function TextBlock({
       )}
 
 
+
+      {/* Undo/Redo Buttons - Outside text block at top-left */}
+      {isEditing && (
+        <div className="absolute -top-12 -left-2 flex gap-1 z-[1002]">
+          <button
+            onClick={performUndo}
+            disabled={historyState.currentIndex <= 0}
+            className="p-2 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-lg shadow-lg hover:from-blue-600 hover:to-blue-700 disabled:from-gray-300 disabled:to-gray-400 disabled:cursor-not-allowed transition-all duration-200 transform hover:scale-105 disabled:hover:scale-100"
+            title="Undo (Ctrl+Z)"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M9 14L4 9L9 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              <path d="M20 20V13C20 10.7909 18.2091 9 16 9H4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </button>
+          <button
+            onClick={performRedo}
+            disabled={historyState.currentIndex >= historyState.history.length - 1}
+            className="p-2 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg shadow-lg hover:from-green-600 hover:to-green-700 disabled:from-gray-300 disabled:to-gray-400 disabled:cursor-not-allowed transition-all duration-200 transform hover:scale-105 disabled:hover:scale-100"
+            title="Redo (Ctrl+Y)"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M15 14L20 9L15 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              <path d="M4 20V13C4 10.7909 5.79086 9 8 9H20" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </button>
+        </div>
+      )}
 
       {/* Save/Cancel Buttons - Outside text block at top-right */}
       {isEditing && (
