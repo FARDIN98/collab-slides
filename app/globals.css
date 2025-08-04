@@ -2,6 +2,36 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Custom animations for presentations page */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animation-delay-150 {
+  animation-delay: 150ms;
+}
+
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.line-clamp-3 {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
 /* Text Block Animations */
 .text-block-enter {
   opacity: 0;
@@ -23,4 +53,82 @@
   opacity: 0;
   transform: scale(0.9);
   transition: opacity 200ms, transform 200ms;
+}
+
+/* MDX Editor Modal Fixes */
+/* Target the specific popup container created by MDX editor */
+.mdxeditor-popup-container {
+  z-index: 10000 !important;
+  position: fixed !important;
+}
+
+/* Target all Radix Dialog components within MDX editor */
+[data-radix-dialog-overlay] {
+  z-index: 9999 !important;
+  position: fixed !important;
+}
+
+[data-radix-dialog-content] {
+  z-index: 10000 !important;
+  position: fixed !important;
+}
+
+/* Specific MDX editor dialog classes */
+._dialogOverlay_sects_870 {
+  z-index: 9999 !important;
+  position: fixed !important;
+}
+
+._dialogContent_sects_603,
+._largeDialogContent_sects_615 {
+  z-index: 10000 !important;
+  position: fixed !important;
+}
+
+/* Ensure popup container is above everything */
+._popupContainer_sects_1235 {
+  z-index: 10000 !important;
+  position: fixed !important;
+}
+
+/* Additional safety nets for any dialog elements */
+[role="dialog"][data-state="open"] {
+  z-index: 10000 !important;
+}
+
+/* Force any dialog portal to be at the top level */
+body > [data-radix-dialog-overlay],
+body > [data-radix-dialog-content] {
+  z-index: 10002 !important;
+}
+
+/* Ensure the editor container doesn't interfere */
+.mdx-editor {
+  position: relative;
+  z-index: 1;
+}
+
+.mdx-editor-minimal {
+  position: relative;
+  z-index: 1;
+}
+
+/* More targeted approach - only fix z-index, preserve other properties */
+[role="dialog"][aria-modal="true"] {
+  z-index: 10001 !important;
+}
+
+/* Target dialogs that are direct children of body (portaled) */
+body > div[role="dialog"],
+body > div[data-radix-dialog-content] {
+  z-index: 10002 !important;
+}
+
+/* Preserve click events by not overriding positioning unless necessary */
+[data-radix-dialog-content][data-state="open"] {
+  z-index: 10001 !important;
+}
+
+[data-radix-dialog-overlay][data-state="open"] {
+  z-index: 10000 !important;
 }

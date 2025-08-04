@@ -141,7 +141,6 @@ const FullscreenPresentation = ({
                   id={textBlock.id}
                   content={textBlock.content}
                   position={textBlock.position}
-                  size={textBlock.size}
                   isSelected={false}
                   isEditing={false}
                   canEdit={false}

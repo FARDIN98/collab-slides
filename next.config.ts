@@ -1,7 +1,12 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // Add your Next.js configuration here
+  transpilePackages: ['@mdxeditor/editor'],
+  webpack: (config) => {
+    // this will override the experiments
+    config.experiments = { ...config.experiments, topLevelAwait: true }
+    return config
+  }
 };
 
 export default nextConfig;

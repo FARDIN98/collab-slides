@@ -60,10 +60,13 @@ const usePresentationStore = create((set, get) => ({
     set({ isLoading: true, error: null })
 
     try {
-      // Get all presentations
+      // Get all presentations with slides count
       const { data: allPresentations, error: presentationsError } = await supabase
         .from('presentations')
-        .select('*')
+        .select(`
+          *,
+          slides_count:slides(count)
+        `)
         .order('created_at', { ascending: false })
 
       if (presentationsError) throw presentationsError
@@ -85,11 +88,12 @@ const usePresentationStore = create((set, get) => ({
         }
       })
 
-      // Combine presentations with user roles (if any)
+      // Combine presentations with user roles and slides count
       const presentations = allPresentations.map(presentation => ({
         ...presentation,
         user_role: roleMap[presentation.id]?.user_role || null,
-        joined_at: roleMap[presentation.id]?.joined_at || null
+        joined_at: roleMap[presentation.id]?.joined_at || null,
+        slides_count: presentation.slides_count?.[0]?.count || 0
       }))
 
       set({ presentations, isLoading: false })
