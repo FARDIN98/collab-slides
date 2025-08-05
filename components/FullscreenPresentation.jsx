@@ -34,9 +34,12 @@ const FullscreenPresentation = ({
 
   const exitPresentation = useCallback(() => {
     setIsFullscreenEnabled(false)
-    if (onExit) {
-      onExit()
-    }
+    // Add a small delay to ensure fullscreen state is properly updated
+    setTimeout(() => {
+      if (onExit) {
+        onExit()
+      }
+    }, 100)
   }, [onExit])
 
   // Handle fullscreen state changes (including when user presses ESC)
@@ -44,40 +47,51 @@ const FullscreenPresentation = ({
     setIsFullscreenEnabled(isFullscreen)
     // If fullscreen is disabled and we have an onExit callback, call it
     if (!isFullscreen && onExit) {
-      onExit()
+      // Add a small delay to ensure proper state management
+      setTimeout(() => {
+        onExit()
+      }, 100)
     }
   }, [onExit])
 
   // Keyboard navigation
   useEffect(() => {
     const handleKeyDown = (event) => {
+      // Prevent default for all handled keys
       switch (event.key) {
         case 'ArrowRight':
         case ' ': // Spacebar
         case 'PageDown':
           event.preventDefault()
+          event.stopPropagation()
           goToNextSlide()
           break
         case 'ArrowLeft':
         case 'PageUp':
           event.preventDefault()
+          event.stopPropagation()
           goToPrevSlide()
           break
         case 'Escape':
           event.preventDefault()
+          event.stopPropagation()
           exitPresentation()
           break
         case 'Home':
           event.preventDefault()
+          event.stopPropagation()
           setCurrentSlideIndex(0)
           break
         case 'End':
           event.preventDefault()
+          event.stopPropagation()
           setCurrentSlideIndex(sortedSlides.length - 1)
           break
         default:
           // Handle number keys for direct slide navigation
           if (event.key >= '1' && event.key <= '9') {
+            event.preventDefault()
+            event.stopPropagation()
             const slideNumber = parseInt(event.key) - 1
             if (slideNumber < sortedSlides.length) {
               setCurrentSlideIndex(slideNumber)
@@ -87,20 +101,36 @@ const FullscreenPresentation = ({
       }
     }
 
-    if (isFullscreenEnabled) {
-      document.addEventListener('keydown', handleKeyDown)
-      return () => document.removeEventListener('keydown', handleKeyDown)
+    // Add event listeners to both document and window for better coverage
+    document.addEventListener('keydown', handleKeyDown, true)
+    window.addEventListener('keydown', handleKeyDown, true)
+    
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown, true)
+      window.removeEventListener('keydown', handleKeyDown, true)
     }
-  }, [isFullscreenEnabled, goToNextSlide, goToPrevSlide, exitPresentation, sortedSlides.length])
+  }, [goToNextSlide, goToPrevSlide, exitPresentation, sortedSlides.length])
 
   // Auto-enter fullscreen when component mounts
   useEffect(() => {
     setIsFullscreenEnabled(true)
   }, [])
 
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      setIsFullscreenEnabled(false)
+    }
+  }, [])
+
   const getTextBlocks = () => {
     if (!currentSlide?.content_json?.textBlocks) return []
     return currentSlide.content_json.textBlocks
+  }
+
+  const getImages = () => {
+    if (!currentSlide?.content_json?.images) return []
+    return currentSlide.content_json.images
   }
 
   return (
@@ -131,26 +161,73 @@ const FullscreenPresentation = ({
             <>
               {/* Text blocks - read-only in presentation mode */}
               {getTextBlocks().map((textBlock, index) => (
-                <TextBlock
+                <div
                   key={textBlock.id}
-                  id={textBlock.id}
-                  content={textBlock.content}
-                  position={textBlock.position}
-                  isSelected={false}
-                  isEditing={false}
-                  canEdit={false}
-                  onSelect={() => {}}
-                  onEdit={() => {}}
-                  onMove={() => {}}
-                  onContentChange={() => {}}
-                  onStopEditing={() => {}}
-                  onDelete={() => {}}
-                  zIndex={100 + index}
-                />
+                  style={{
+                    position: 'absolute',
+                    left: textBlock.position?.x || 0,
+                    top: textBlock.position?.y || 0,
+                    width: textBlock.size?.width || 300,
+                    height: textBlock.size?.height || 200,
+                    zIndex: 100 + index,
+                  }}
+                  className="p-2 rounded-lg overflow-hidden"
+                >
+                  {textBlock.content ? (
+                    <div 
+                      className="w-full h-full text-gray-800 break-words word-wrap leading-tight overflow-hidden"
+                      style={{ 
+                        wordWrap: 'break-word',
+                        overflowWrap: 'anywhere',
+                        hyphens: 'auto',
+                        fontSize: `${Math.max(12, Math.min(24, Math.min((textBlock.size?.width || 300) / 15, (textBlock.size?.height || 200) / 4)))}px`,
+                        lineHeight: '1.2',
+                        display: 'block'
+                      }}
+                      dangerouslySetInnerHTML={{
+                        __html: textBlock.content
+                          .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                          .replace(/\*(.*?)\*/g, '<em>$1</em>')
+                          .replace(/__(.*?)__/g, '<u>$1</u>')
+                          .replace(/`(.*?)`/g, '<code style="word-break: break-all; font-size: inherit; background: rgba(0,0,0,0.1); padding: 1px 3px; border-radius: 3px;">$1</code>')
+                          .replace(/!\[(.*?)\]\((.*?)\)/g, '<img alt="$1" src="$2" style="max-width: 100%; max-height: 100%; width: auto; height: auto; display: block; object-fit: contain; margin: 2px 0; border-radius: 4px;" />')
+                          .replace(/\n/g, '<br>')
+                      }}
+                    />
+                  ) : null}
+                </div>
+              ))}
+
+              {/* Images - if stored separately */}
+              {getImages().map((image, index) => (
+                <div
+                  key={`image-${index}`}
+                  style={{
+                    position: 'absolute',
+                    left: image.position?.x || 0,
+                    top: image.position?.y || 0,
+                    width: image.size?.width || 300,
+                    height: image.size?.height || 200,
+                    zIndex: 200 + index,
+                  }}
+                  className="rounded-lg overflow-hidden"
+                >
+                  <img
+                    src={image.url}
+                    alt={image.alt || 'Slide image'}
+                    className="w-full h-full object-contain rounded-lg"
+                    style={{
+                      maxWidth: '100%',
+                      maxHeight: '100%',
+                      width: 'auto',
+                      height: 'auto'
+                    }}
+                  />
+                </div>
               ))}
 
               {/* Empty state */}
-              {getTextBlocks().length === 0 && (
+              {getTextBlocks().length === 0 && getImages().length === 0 && (
                 <div className="absolute inset-0 flex items-center justify-center text-gray-400">
                   <div className="text-center">
                     <svg className="w-24 h-24 mx-auto mb-6 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
