@@ -205,25 +205,22 @@ const usePresentationStore = create((set, get) => ({
     }
   },
 
-  // Clear presentations
-  clearPresentations: () => {
-    set({ presentations: [], error: null })
+  // Clear all data (DRY principle - single clear function)
+  clearAllData: () => {
+    set({ 
+      presentations: [], 
+      slides: [], 
+      users: [], 
+      currentPresentation: null,
+      error: null 
+    })
   },
 
-  // Clear slides
-  clearSlides: () => {
-    set({ slides: [] })
-  },
-
-  // Clear users
-  clearUsers: () => {
-    set({ users: [] })
-  },
-
-  // Clear error
-  clearError: () => {
-    set({ error: null })
-  },
+  // Clear specific data types
+  clearPresentations: () => set({ presentations: [], error: null }),
+  clearSlides: () => set({ slides: [] }),
+  clearUsers: () => set({ users: [] }),
+  clearError: () => set({ error: null }),
 
   // Update user role (only creators can do this)
   updateUserRole: async (presentationId, targetNickname, newRole, requesterNickname) => {

@@ -129,11 +129,6 @@ const FullscreenPresentation = ({
         <div className="w-full h-full max-w-7xl max-h-full aspect-video bg-white relative overflow-hidden mx-4">
           {currentSlide ? (
             <>
-              {/* Slide number indicator */}
-              <div className="absolute top-6 left-6 bg-gray-800 text-white text-lg px-3 py-2 rounded z-10">
-                Slide {currentSlide.slide_number}
-              </div>
-
               {/* Text blocks - read-only in presentation mode */}
               {getTextBlocks().map((textBlock, index) => (
                 <TextBlock

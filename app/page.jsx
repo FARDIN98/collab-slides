@@ -3,19 +3,16 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import useAuthStore from '../stores/authStore'
+import { useClientMount } from '../hooks/useClientMount'
+import { logError, getErrorMessage } from '../lib/errorHandler'
 
 export default function Home() {
   const [nickname, setNickname] = useState('')
   const [error, setError] = useState('')
-  const [isMounted, setIsMounted] = useState(false)
+  const isMounted = useClientMount()
   const router = useRouter()
   
-  const { setNickname: setStoreNickname, isLoading, hasNickname } = useAuthStore()
-
-  // Ensure component is mounted before checking nickname
-  useEffect(() => {
-    setIsMounted(true)
-  }, [])
+  const { setNickname: setAuthNickname, isLoading, hasNickname } = useAuthStore()
 
   // Check if user already has a nickname set
   useEffect(() => {
@@ -36,10 +33,11 @@ export default function Home() {
     }
 
     try {
-      await setStoreNickname(trimmedNickname)
+      await setAuthNickname(trimmedNickname)
       router.push('/presentations')
     } catch (err) {
-      setError(err.message || 'Please try again.')
+      logError('Nickname Setup', err)
+      setError(getErrorMessage(err, 'Please try again.'))
     }
   }
 

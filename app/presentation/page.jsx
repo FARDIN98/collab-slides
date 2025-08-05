@@ -5,6 +5,8 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import useAuthStore from '../../stores/authStore'
 import usePresentationStore from '../../stores/presentationStore'
 import FullscreenPresentation from '../../components/FullscreenPresentation'
+import { logError } from '../../lib/errorHandler'
+import { useClientMount } from '../../hooks/useClientMount'
 
 function PresentationContent() {
   const { nickname, hasNickname } = useAuthStore()
@@ -21,12 +23,8 @@ function PresentationContent() {
   const presentationId = searchParams.get('id')
   const slideParam = searchParams.get('slide')
   
-  const [isMounted, setIsMounted] = useState(false)
+  const isMounted = useClientMount()
   const [initialSlideIndex, setInitialSlideIndex] = useState(0)
-
-  useEffect(() => {
-    setIsMounted(true)
-  }, [])
 
   useEffect(() => {
     if (!isMounted) return
@@ -47,7 +45,7 @@ function PresentationContent() {
         await joinPresentation(presentationId, nickname)
         await fetchSlides(presentationId)
       } catch (error) {
-        console.error('Error initializing presentation:', error)
+        logError('Presentation Initialization', error)
         router.push('/presentations')
       }
     }

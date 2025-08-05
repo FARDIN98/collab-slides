@@ -8,6 +8,7 @@ import CreatePresentationModal from '../../components/CreatePresentationModal'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '../../components/ui/card'
 import { Button } from '../../components/ui/button'
 import { Badge } from '../../components/ui/badge'
+import { useClientMount } from '../../hooks/useClientMount'
 
 export default function Presentations() {
   const { nickname, hasNickname, clearNickname } = useAuthStore()
@@ -21,11 +22,7 @@ export default function Presentations() {
   } = usePresentationStore()
   const router = useRouter()
   const [isModalOpen, setIsModalOpen] = useState(false)
-  const [isMounted, setIsMounted] = useState(false)
-
-  useEffect(() => {
-    setIsMounted(true)
-  }, [])
+  const isMounted = useClientMount()
 
   useEffect(() => {
     if (!isMounted) return

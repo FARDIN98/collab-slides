@@ -2,6 +2,8 @@
 
 import React, { useEffect, useState, useCallback, Suspense, useMemo } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import { logError } from '../../lib/errorHandler'
+import { useClientMount } from '../../hooks/useClientMount'
 import { 
   ArrowLeft, 
   Play, 
@@ -79,13 +81,9 @@ function SlideEditorContent() {
   const [selectedTextBlockId, setSelectedTextBlockId] = useState(null)
   const [editingTextBlockId, setEditingTextBlockId] = useState(null)
   const [isUpdatingContent, setIsUpdatingContent] = useState(false)
-  const [isMounted, setIsMounted] = useState(false)
+  const isMounted = useClientMount()
   // Optimized current slide content state to prevent unnecessary re-renders
   const [currentSlideContent, setCurrentSlideContent] = useState(null)
-
-  useEffect(() => {
-    setIsMounted(true)
-  }, [])
 
   useEffect(() => {
     if (!isMounted) return
@@ -107,7 +105,7 @@ function SlideEditorContent() {
         await fetchSlides(presentationId)
         await fetchPresentationDetails(presentationId)
       } catch (error) {
-        console.error('Error initializing presentation:', error)
+        logError('Presentation Initialization', error)
         router.push('/presentations')
       }
     }
@@ -176,7 +174,7 @@ function SlideEditorContent() {
       // Only fetch users, don't reload slides
       await fetchPresentationUsers(presentationId)
     } catch (error) {
-      console.error('Failed to update role:', error)
+      logError('Role Update', error)
     } finally {
       setRoleChangeLoading(null)
     }
@@ -194,7 +192,7 @@ function SlideEditorContent() {
     try {
       await addSlide(presentationId, nickname)
     } catch (error) {
-      console.error('Failed to add slide:', error)
+      logError('Add Slide', error)
     } finally {
       setSlideActionLoading(false)
     }
@@ -212,7 +210,7 @@ function SlideEditorContent() {
         setCurrentSlideIndex(Math.max(0, slidesLength - 2))
       }
     } catch (error) {
-      console.error('Failed to remove slide:', error)
+      logError('Remove Slide', error)
     } finally {
       setSlideActionLoading(false)
     }
@@ -281,7 +279,7 @@ function SlideEditorContent() {
       await updateSlideContent(currentSlide.id, updatedContent, nickname, presentationId)
       // Note: slides array will be updated automatically via Supabase real-time subscription
     } catch (error) {
-      console.error('Error creating text block:', error)
+      logError('Text Block Creation', error)
       // Revert optimistic update on error
       setCurrentSlideContent(previousContent)
       setSelectedTextBlockId(null)
@@ -325,7 +323,7 @@ function SlideEditorContent() {
       await updateSlideContent(currentSlide.id, updatedContent, nickname, presentationId)
       // Note: slides array will be updated automatically via Supabase real-time subscription
     } catch (error) {
-      console.error('Error updating text block position:', error)
+      logError('Text Block Position Update', error)
       // Revert optimistic update on error
       setCurrentSlideContent(previousContent)
     }
@@ -358,7 +356,7 @@ function SlideEditorContent() {
       await updateSlideContent(currentSlide.id, updatedContent, nickname, presentationId)
       // Note: slides array will be updated automatically via Supabase real-time subscription
     } catch (error) {
-      console.error('Error updating text block content:', error)
+      logError('Text Block Content Update', error)
       // Revert optimistic update on error
       setCurrentSlideContent(previousContent)
     } finally {
@@ -399,7 +397,7 @@ function SlideEditorContent() {
       await updateSlideContent(currentSlide.id, updatedContent, nickname, presentationId)
       // Note: slides array will be updated automatically via Supabase real-time subscription
     } catch (error) {
-      console.error('Error deleting text block:', error)
+      logError('Text Block Deletion', error)
       // Revert optimistic update on error
       setCurrentSlideContent(previousContent)
     }
@@ -603,16 +601,10 @@ function SlideEditorContent() {
             <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-80 h-80 bg-gradient-to-r from-emerald-400/10 to-teal-400/10 rounded-full blur-3xl animate-pulse delay-500"></div>
           </div>
           
-          {/* Floating geometric shapes */}
-          <div className="absolute inset-0 overflow-hidden pointer-events-none">
-            <div className="absolute top-20 left-20 w-4 h-4 bg-gradient-to-br from-blue-400/30 to-blue-500/30 rounded-full animate-bounce delay-300"></div>
-            <div className="absolute top-40 right-32 w-3 h-3 bg-gradient-to-br from-purple-400/30 to-purple-500/30 rounded-full animate-bounce delay-700"></div>
-            <div className="absolute bottom-32 left-40 w-2 h-2 bg-gradient-to-br from-indigo-400/30 to-indigo-500/30 rounded-full animate-bounce delay-1000"></div>
-            <div className="absolute bottom-20 right-20 w-3 h-3 bg-gradient-to-br from-cyan-400/30 to-cyan-500/30 rounded-full animate-bounce delay-500"></div>
-          </div>
+          
           
           <div className="absolute inset-0 bg-gradient-to-br from-transparent via-white/30 to-transparent"></div>
-          <Card className="relative w-full max-w-4xl h-[600px] overflow-hidden shadow-2xl shadow-slate-400/30 mx-2 md:mx-0 border border-white/60 bg-white/95 backdrop-blur-xl">
+          <Card className="relative w-full max-w-6xl h-[600px] overflow-hidden shadow-2xl shadow-slate-400/30 mx-2 md:mx-0 border-2 border-gray-400 bg-white/95 backdrop-blur-xl">
             <div className="absolute inset-0 bg-gradient-to-br from-blue-50/30 via-white/20 to-purple-50/30 pointer-events-none"></div>
             <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/40 to-transparent pointer-events-none"></div>
             <CardContent className="relative p-0 h-full">

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { logError, getErrorMessage } from '../lib/errorHandler'
 
 export default function CreatePresentationModal({ isOpen, onClose, onSubmit, isLoading }) {
   const [title, setTitle] = useState('')
@@ -23,7 +24,8 @@ export default function CreatePresentationModal({ isOpen, onClose, onSubmit, isL
       setDescription('')
       onClose()
     } catch (err) {
-      setError(err.message || 'Failed to create presentation')
+      logError('Create Presentation', err)
+      setError(getErrorMessage(err, 'Failed to create presentation'))
     }
   }
 
