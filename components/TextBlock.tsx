@@ -17,6 +17,7 @@ interface TextBlockProps {
   onSelect: (id: string) => void
   onEdit: (id: string) => void
   onMove: (id: string, position: { x: number; y: number }) => void
+  onResize?: (id: string, size: { width: number; height: number }) => void
   onContentChange: (id: string, content: string) => void
   onStopEditing: () => void
   onDelete: (id: string) => void
@@ -82,6 +83,7 @@ export default function TextBlock({
   onSelect,
   onEdit,
   onMove,
+  onResize,
   onContentChange,
   onStopEditing,
   onDelete,
@@ -94,6 +96,11 @@ export default function TextBlock({
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 })
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
   const [wouldOverlap, setWouldOverlap] = useState(false)
+  const [isResizing, setIsResizing] = useState(false)
+  const [resizeDirection, setResizeDirection] = useState<string>('')
+  const [resizeStart, setResizeStart] = useState({ x: 0, y: 0, width: 0, height: 0 })
+  const [currentSize, setCurrentSize] = useState(size)
+  const [renderKey, setRenderKey] = useState(0) // Force re-render key
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const blockRef = useRef<HTMLDivElement>(null)
   const mdxEditorRef = useRef<MDXEditorMethods>(null)
@@ -200,6 +207,11 @@ export default function TextBlock({
     setLocalContent(content)
   }, [content])
 
+  // Update current size when prop changes
+  useEffect(() => {
+    setCurrentSize(size)
+  }, [size])
+
   // Initialize history and focus when editing starts
   useEffect(() => {
     if (isEditing) {
@@ -218,7 +230,7 @@ export default function TextBlock({
   }, [isEditing, id, content])
 
   const handleMouseDown = (e: React.MouseEvent) => {
-    if (!canEdit || isEditing) return
+    if (!canEdit || isEditing || isResizing) return
     
     e.preventDefault()
     e.stopPropagation()
@@ -226,6 +238,23 @@ export default function TextBlock({
     setIsDragging(true)
     setDragStart({ x: e.clientX, y: e.clientY })
     setDragOffset({ x: 0, y: 0 })
+    onSelect(id)
+  }
+
+  const handleResizeMouseDown = (e: React.MouseEvent, direction: string) => {
+    if (!canEdit || isEditing || isDragging) return
+    
+    e.preventDefault()
+    e.stopPropagation()
+    
+    setIsResizing(true)
+    setResizeDirection(direction)
+    setResizeStart({
+      x: e.clientX,
+      y: e.clientY,
+      width: currentSize.width,
+      height: currentSize.height
+    })
     onSelect(id)
   }
 
@@ -241,6 +270,47 @@ export default function TextBlock({
       const newY = position.y + deltaY
       const overlap = checkOverlap({ x: newX, y: newY }, { width: size.width, height: size.height })
       setWouldOverlap(overlap)
+    } else if (isResizing) {
+      const deltaX = e.clientX - resizeStart.x
+      const deltaY = e.clientY - resizeStart.y
+      
+      let newWidth = resizeStart.width
+      let newHeight = resizeStart.height
+      
+      // Calculate new size based on resize direction
+      switch (resizeDirection) {
+        case 'se': // Southeast (bottom-right)
+          newWidth = Math.max(100, resizeStart.width + deltaX)
+          newHeight = Math.max(50, resizeStart.height + deltaY)
+          break
+        case 'sw': // Southwest (bottom-left)
+          newWidth = Math.max(100, resizeStart.width - deltaX)
+          newHeight = Math.max(50, resizeStart.height + deltaY)
+          break
+        case 'ne': // Northeast (top-right)
+          newWidth = Math.max(100, resizeStart.width + deltaX)
+          newHeight = Math.max(50, resizeStart.height - deltaY)
+          break
+        case 'nw': // Northwest (top-left)
+          newWidth = Math.max(100, resizeStart.width - deltaX)
+          newHeight = Math.max(50, resizeStart.height - deltaY)
+          break
+        case 'e': // East (right)
+          newWidth = Math.max(100, resizeStart.width + deltaX)
+          break
+        case 'w': // West (left)
+          newWidth = Math.max(100, resizeStart.width - deltaX)
+          break
+        case 's': // South (bottom)
+          newHeight = Math.max(50, resizeStart.height + deltaY)
+          break
+        case 'n': // North (top)
+          newHeight = Math.max(50, resizeStart.height - deltaY)
+          break
+      }
+      
+      setCurrentSize({ width: newWidth, height: newHeight })
+      setRenderKey(prev => prev + 1) // Force re-render for font size update
     }
   }
 
@@ -277,16 +347,40 @@ export default function TextBlock({
       
       setDragOffset({ x: 0, y: 0 })
       setWouldOverlap(false)
+    } else if (isResizing) {
+      setIsResizing(false)
+      
+      // Call onResize if the size actually changed
+      if (onResize && (currentSize.width !== size.width || currentSize.height !== size.height)) {
+        onResize(id, currentSize)
+      }
+      
+      setResizeDirection('')
     }
   }
 
-  // Add global mouse event listeners for dragging
+  // Add global mouse event listeners for dragging and resizing
   useEffect(() => {
-    if (isDragging) {
+    if (isDragging || isResizing) {
       document.addEventListener('mousemove', handleMouseMove)
       document.addEventListener('mouseup', handleMouseUp)
       
-      document.body.style.cursor = 'grabbing'
+      if (isDragging) {
+        document.body.style.cursor = 'grabbing'
+      } else if (isResizing) {
+        // Set cursor based on resize direction
+        const cursorMap: { [key: string]: string } = {
+          'se': 'se-resize',
+          'sw': 'sw-resize',
+          'ne': 'ne-resize',
+          'nw': 'nw-resize',
+          'e': 'e-resize',
+          'w': 'w-resize',
+          's': 's-resize',
+          'n': 'n-resize'
+        }
+        document.body.style.cursor = cursorMap[resizeDirection] || 'default'
+      }
       document.body.style.userSelect = 'none'
       
       return () => {
@@ -296,7 +390,7 @@ export default function TextBlock({
         document.body.style.userSelect = ''
       }
     }
-  }, [isDragging, dragStart, position, size, canvasRect])
+  }, [isDragging, isResizing, dragStart, resizeStart, resizeDirection, position, size, canvasRect, currentSize])
 
   // Cleanup debounce timeout on unmount
   useEffect(() => {
@@ -390,8 +484,8 @@ export default function TextBlock({
         position: 'absolute',
         left: position.x + dragOffset.x,
         top: position.y + dragOffset.y,
-        width: size.width,
-        height: size.height,
+        width: currentSize.width,
+        height: currentSize.height,
         zIndex: isEditing ? 1000 : zIndex, // Higher z-index when editing for modals
       }}
       className={`
@@ -413,7 +507,7 @@ export default function TextBlock({
       {/* Delete Button */}
       {isSelected && !isEditing && canEdit && (
         <button
-          className="absolute -top-3 -left-3 w-6 h-6 bg-red-500 rounded-full flex items-center justify-center shadow-lg hover:bg-red-600 transition-all duration-200 hover:scale-110 z-10"
+          className="absolute -top-8 -left-2 w-6 h-6 bg-red-500 rounded-full flex items-center justify-center shadow-lg hover:bg-red-600 transition-all duration-200 hover:scale-110 z-30"
           onClick={(e) => {
             e.stopPropagation()
             onDelete(id)
@@ -423,6 +517,63 @@ export default function TextBlock({
             <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd"></path>
           </svg>
         </button>
+      )}
+
+      {/* Resize Border */}
+      {isSelected && !isEditing && canEdit && !isDragging && (
+        <>
+          {/* Main Border - Canvas style */}
+          <div className="absolute inset-0 border-2 border-gray-400 rounded-lg pointer-events-none"></div>
+          
+          {/* Corner resize handles - visible for better UX */}
+          <div
+            className="absolute -top-1 -left-1 w-3 h-3 bg-white border-2 border-gray-400 cursor-nw-resize hover:bg-gray-100 transition-colors z-20"
+            onMouseDown={(e) => handleResizeMouseDown(e, 'nw')}
+            title="Resize from top-left corner"
+          />
+          <div
+            className="absolute -top-1 -right-1 w-3 h-3 bg-white border-2 border-gray-400 cursor-ne-resize hover:bg-gray-100 transition-colors z-20"
+            onMouseDown={(e) => handleResizeMouseDown(e, 'ne')}
+            title="Resize from top-right corner"
+          />
+          <div
+            className="absolute -bottom-1 -left-1 w-3 h-3 bg-white border-2 border-gray-400 cursor-sw-resize hover:bg-gray-100 transition-colors z-20"
+            onMouseDown={(e) => handleResizeMouseDown(e, 'sw')}
+            title="Resize from bottom-left corner"
+          />
+          <div
+            className="absolute -bottom-1 -right-1 w-3 h-3 bg-white border-2 border-gray-400 cursor-se-resize hover:bg-gray-100 transition-colors z-20"
+            onMouseDown={(e) => handleResizeMouseDown(e, 'se')}
+            title="Resize from bottom-right corner"
+          />
+          
+          {/* Edge resize handles - visible for better UX */}
+          <div
+            className="absolute -top-1 left-1/2 transform -translate-x-1/2 w-3 h-3 bg-white border-2 border-gray-400 cursor-n-resize hover:bg-gray-100 transition-colors z-20"
+            onMouseDown={(e) => handleResizeMouseDown(e, 'n')}
+            title="Resize from top edge"
+          />
+          <div
+            className="absolute -bottom-1 left-1/2 transform -translate-x-1/2 w-3 h-3 bg-white border-2 border-gray-400 cursor-s-resize hover:bg-gray-100 transition-colors z-20"
+            onMouseDown={(e) => handleResizeMouseDown(e, 's')}
+            title="Resize from bottom edge"
+          />
+          <div
+            className="absolute -left-1 top-1/2 transform -translate-y-1/2 w-3 h-3 bg-white border-2 border-gray-400 cursor-w-resize hover:bg-gray-100 transition-colors z-20"
+            onMouseDown={(e) => handleResizeMouseDown(e, 'w')}
+            title="Resize from left edge"
+          />
+          <div
+            className="absolute -right-1 top-1/2 transform -translate-y-1/2 w-3 h-3 bg-white border-2 border-gray-400 cursor-e-resize hover:bg-gray-100 transition-colors z-20"
+            onMouseDown={(e) => handleResizeMouseDown(e, 'e')}
+            title="Resize from right edge"
+          />
+          
+          {/* Resize indicator text */}
+          <div className="absolute -top-6 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white text-xs px-2 py-1 rounded shadow-lg pointer-events-none z-30">
+            Drag corners or edges to resize
+          </div>
+        </>
       )}
 
 
@@ -475,37 +626,47 @@ export default function TextBlock({
 
       {/* Content Area */}
       {isEditing ? (
-        <div className="w-full h-full bg-transparent rounded-lg relative z-[1000]">
-          <div className="w-full h-full rounded-lg overflow-visible relative z-[1001] mdx-editor">
+        <div className="w-full h-full bg-transparent rounded-lg relative z-[1000] overflow-hidden">
+          <div className="w-full h-full rounded-lg overflow-hidden relative z-[1001] mdx-editor">
             <ForwardRefEditor
               ref={mdxEditorRef}
               markdown={localContent}
               onChange={handleMDXContentChange}
               placeholder="Type your text here..."
-              contentEditableClassName="prose prose-sm max-w-none p-3 min-h-full focus:outline-none text-gray-800"
+              contentEditableClassName="prose prose-sm max-w-none p-3 h-full focus:outline-none text-gray-800 break-words word-wrap overflow-wrap-anywhere overflow-hidden resize-none"
             />
           </div>
         </div>
       ) : (
-        <div className="w-full h-full p-3 flex items-start justify-start rounded-lg">
+        <div className="w-full h-full p-2 rounded-lg overflow-hidden" key={renderKey}>
           {content ? (
-            <div className="text-gray-800 whitespace-pre-wrap break-words leading-relaxed text-sm prose prose-sm max-w-none w-full">
-              {/* Simple markdown rendering for display mode */}
-              <div 
-                className="prose prose-sm max-w-none"
-                dangerouslySetInnerHTML={{
-                  __html: content
-                    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-                    .replace(/\*(.*?)\*/g, '<em>$1</em>')
-                    .replace(/__(.*?)__/g, '<u>$1</u>')
-                    .replace(/`(.*?)`/g, '<code>$1</code>')
-                    .replace(/!\[(.*?)\]\((.*?)\)/g, '<img alt="$1" src="$2" style="max-width: 100%; height: auto;" />')
-                    .replace(/\n/g, '<br>')
-                }}
-              />
-            </div>
+            <div 
+              className="w-full h-full text-gray-800 break-words word-wrap leading-tight overflow-hidden"
+              style={{ 
+                wordWrap: 'break-word',
+                overflowWrap: 'anywhere',
+                hyphens: 'auto',
+                fontSize: `${Math.max(6, Math.min(18, Math.min(currentSize.width / 20, currentSize.height / 6)))}px`,
+                lineHeight: '1.1',
+                display: 'block'
+              }}
+              dangerouslySetInnerHTML={{
+                __html: content
+                  .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                  .replace(/\*(.*?)\*/g, '<em>$1</em>')
+                  .replace(/__(.*?)__/g, '<u>$1</u>')
+                  .replace(/`(.*?)`/g, '<code style="word-break: break-all; font-size: inherit; background: rgba(0,0,0,0.1); padding: 1px 3px; border-radius: 3px;">$1</code>')
+                  .replace(/!\[(.*?)\]\((.*?)\)/g, '<img alt="$1" src="$2" style="max-width: 100%; height: auto; display: block; object-fit: contain; margin: 2px 0;" />')
+                  .replace(/\n/g, '<br>')
+              }}
+            />
           ) : (
-            <div className="text-gray-400 italic text-sm flex items-center justify-center w-full h-full text-center">
+            <div 
+              className="text-gray-400 italic flex items-center justify-center w-full h-full text-center"
+              style={{ 
+                fontSize: `${Math.max(8, Math.min(16, currentSize.width / 15))}px`
+              }}
+            >
               Double-click to add text
             </div>
           )}

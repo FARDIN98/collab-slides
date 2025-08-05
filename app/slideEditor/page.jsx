@@ -329,9 +329,33 @@ function SlideEditorContent() {
     }
   }, [canEditSlides, presentationId, nickname, currentSlideContent, currentSlideIndex])
 
-
-
-
+  const handleTextBlockResize = useCallback(async (textBlockId, newSize) => {
+    if (!canEditSlides(presentationId, nickname)) return
+    
+    const currentSlide = getCurrentSlide()
+    const currentTextBlocks = getTextBlocks()
+    const updatedTextBlocks = currentTextBlocks.map(block =>
+      block.id === textBlockId ? { ...block, size: newSize } : block
+    )
+    
+    const updatedContent = {
+      ...currentSlideContent,
+      textBlocks: updatedTextBlocks
+    }
+    
+    // Optimistic update: immediately update current slide content only
+    const previousContent = currentSlideContent
+    setCurrentSlideContent(updatedContent)
+    
+    try {
+      await updateSlideContent(currentSlide.id, updatedContent, nickname, presentationId)
+      // Note: slides array will be updated automatically via Supabase real-time subscription
+    } catch (error) {
+      logError('Text Block Resize', error)
+      // Revert optimistic update on error
+      setCurrentSlideContent(previousContent)
+    }
+  }, [canEditSlides, presentationId, nickname, currentSlideContent, currentSlideIndex])
 
   const handleTextBlockContentChange = useCallback(async (textBlockId, newContent) => {
     if (!canEditSlides(presentationId, nickname)) return
@@ -656,6 +680,7 @@ function SlideEditorContent() {
                         onSelect={handleTextBlockSelect}
                         onEdit={handleTextBlockEdit}
                         onMove={handleTextBlockMove}
+                        onResize={handleTextBlockResize}
                         onContentChange={handleTextBlockContentChange}
                         onStopEditing={handleStopEditing}
                         onDelete={handleTextBlockDelete}
@@ -721,6 +746,7 @@ function SlideEditorContent() {
                         onSelect={() => {}}
                         onEdit={() => {}}
                         onMove={() => {}}
+                        onResize={() => {}}
                         onContentChange={() => {}}
                         onStopEditing={() => {}}
                         onDelete={() => {}}
