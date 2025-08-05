@@ -24,6 +24,7 @@ interface TextBlockProps {
   zIndex: number
   canvasRect?: DOMRect
   allTextBlocks?: Array<{ id: string; position: { x: number; y: number }; size: { width: number; height: number } }>
+  presentationId?: string
 }
 
 // History management interface
@@ -89,7 +90,8 @@ export default function TextBlock({
   onDelete,
   zIndex,
   canvasRect,
-  allTextBlocks = []
+  allTextBlocks = [],
+  presentationId
 }: TextBlockProps) {
   const [localContent, setLocalContent] = useState(content)
   const [isDragging, setIsDragging] = useState(false)
@@ -418,7 +420,7 @@ export default function TextBlock({
   }
 
   // Debounced history saving
-  const debounceTimeoutRef = useRef<NodeJS.Timeout>()
+  const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   
   const handleContentChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const newContent = e.target.value
@@ -634,6 +636,7 @@ export default function TextBlock({
               onChange={handleMDXContentChange}
               placeholder="Type your text here..."
               contentEditableClassName="prose prose-sm max-w-none p-3 h-full focus:outline-none text-gray-800 break-words word-wrap overflow-wrap-anywhere overflow-hidden resize-none"
+              presentationId={presentationId}
             />
           </div>
         </div>

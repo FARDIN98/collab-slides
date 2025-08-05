@@ -687,6 +687,7 @@ function SlideEditorContent() {
                         zIndex={100 + index}
                         canvasRect={canvasRect}
                         allTextBlocks={getTextBlocks()}
+                        presentationId={presentationId}
                       />
                     ))}
 
@@ -753,6 +754,7 @@ function SlideEditorContent() {
                         zIndex={100 + index}
                         canvasRect={canvasRect}
                         allTextBlocks={getTextBlocks()}
+                        presentationId={presentationId}
                       />
                     ))}
 
