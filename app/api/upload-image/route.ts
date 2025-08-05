@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import crypto from 'crypto'
 
-// Initialize Supabase client with service role key for file uploads
+
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
 
@@ -12,7 +12,7 @@ if (!supabaseUrl || !supabaseServiceKey) {
 
 const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
-// Supported image MIME types
+
 const ALLOWED_TYPES = [
   'image/jpeg',
   'image/jpg', 
@@ -22,10 +22,10 @@ const ALLOWED_TYPES = [
   'image/svg+xml'
 ]
 
-// Maximum file size (10MB)
+
 const MAX_FILE_SIZE = 10 * 1024 * 1024
 
-// Generate unique filename
+
 function generateUniqueFilename(originalName: string): string {
   const timestamp = Date.now()
   const randomString = crypto.randomBytes(6).toString('hex')
@@ -33,9 +33,9 @@ function generateUniqueFilename(originalName: string): string {
   return `img-${timestamp}-${randomString}.${extension}`
 }
 
-// Validate file type and size
+
 function validateFile(file: File): { isValid: boolean; error?: string } {
-  // Check file size
+  
   if (file.size > MAX_FILE_SIZE) {
     return {
       isValid: false,
@@ -43,7 +43,7 @@ function validateFile(file: File): { isValid: boolean; error?: string } {
     }
   }
 
-  // Check file type
+  
   if (!ALLOWED_TYPES.includes(file.type)) {
     return {
       isValid: false,
@@ -54,19 +54,19 @@ function validateFile(file: File): { isValid: boolean; error?: string } {
   return { isValid: true }
 }
 
-// Sanitize presentation ID to prevent directory traversal
+
 function sanitizePresentationId(id: string): string {
   return id.replace(/[^a-zA-Z0-9-_]/g, '')
 }
 
 export async function POST(request: NextRequest) {
   try {
-    // Parse form data
+    
     const formData = await request.formData()
     const file = formData.get('image') as File
     const presentationId = formData.get('presentationId') as string
 
-    // Validate required fields
+
     if (!file) {
       return NextResponse.json(
         { success: false, error: 'No image file provided' },
@@ -81,7 +81,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Validate file
+
     const validation = validateFile(file)
     if (!validation.isValid) {
       return NextResponse.json(
@@ -90,7 +90,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Sanitize presentation ID
+
     const sanitizedPresentationId = sanitizePresentationId(presentationId)
     if (!sanitizedPresentationId) {
       return NextResponse.json(
@@ -99,17 +99,17 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Generate unique filename
+
     const fileName = generateUniqueFilename(file.name)
     
-    // Create file path for organized storage
+
     const filePath = `presentations/${sanitizedPresentationId}/${fileName}`
     
-    // Convert file to buffer
+
     const bytes = await file.arrayBuffer()
     const buffer = Buffer.from(bytes)
     
-    // Upload to Supabase Storage
+
     const { data, error } = await supabase.storage
       .from('images')
       .upload(filePath, buffer, {
@@ -125,7 +125,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Get public URL
+
     const { data: urlData } = supabase.storage
       .from('images')
       .getPublicUrl(filePath)
@@ -152,7 +152,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// Handle unsupported methods
+
 export async function GET() {
   return NextResponse.json(
     { success: false, error: 'Method not allowed' },

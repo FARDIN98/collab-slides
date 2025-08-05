@@ -39,7 +39,7 @@ function PresentationContent() {
       return
     }
 
-    // Join the presentation and fetch initial data
+
     const initializePresentation = async () => {
       try {
         await joinPresentation(presentationId, nickname)
@@ -52,7 +52,7 @@ function PresentationContent() {
 
     initializePresentation()
 
-    // Subscribe to real-time updates
+
     subscribeToSlideUpdates(presentationId)
 
     return () => {
@@ -60,12 +60,12 @@ function PresentationContent() {
     }
   }, [isMounted, hasNickname, presentationId, nickname, router, joinPresentation, fetchSlides, subscribeToSlideUpdates, unsubscribeFromUserUpdates])
 
-  // Set initial slide index based on URL parameter
+
   useEffect(() => {
     if (slides.length > 0 && slideParam) {
       const slideNumber = parseInt(slideParam)
       if (!isNaN(slideNumber) && slideNumber > 0) {
-        // Sort slides to find the correct index
+
         const sortedSlides = [...slides].sort((a, b) => a.slide_number - b.slide_number)
         const slideIndex = sortedSlides.findIndex(slide => slide.slide_number === slideNumber)
         if (slideIndex !== -1) {
