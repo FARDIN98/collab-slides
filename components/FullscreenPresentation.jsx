@@ -15,11 +15,11 @@ const FullscreenPresentation = ({
   const [isFullscreenEnabled, setIsFullscreenEnabled] = useState(false)
   const router = useRouter()
 
-  // Sort slides by slide_number to ensure correct order
+
   const sortedSlides = [...slides].sort((a, b) => a.slide_number - b.slide_number)
   const currentSlide = sortedSlides[currentSlideIndex]
 
-  // Navigation functions
+
   const goToNextSlide = useCallback(() => {
     if (currentSlideIndex < sortedSlides.length - 1) {
       setCurrentSlideIndex(prev => prev + 1)
@@ -34,7 +34,7 @@ const FullscreenPresentation = ({
 
   const exitPresentation = useCallback(() => {
     setIsFullscreenEnabled(false)
-    // Add a small delay to ensure fullscreen state is properly updated
+
     setTimeout(() => {
       if (onExit) {
         onExit()
@@ -42,25 +42,24 @@ const FullscreenPresentation = ({
     }, 100)
   }, [onExit])
 
-  // Handle fullscreen state changes (including when user presses ESC)
+
   const handleFullscreenChange = useCallback((isFullscreen) => {
     setIsFullscreenEnabled(isFullscreen)
-    // If fullscreen is disabled and we have an onExit callback, call it
     if (!isFullscreen && onExit) {
-      // Add a small delay to ensure proper state management
+      
       setTimeout(() => {
         onExit()
       }, 100)
     }
   }, [onExit])
 
-  // Keyboard navigation
+
   useEffect(() => {
     const handleKeyDown = (event) => {
-      // Prevent default for all handled keys
+
       switch (event.key) {
         case 'ArrowRight':
-        case ' ': // Spacebar
+        case ' ': 
         case 'PageDown':
           event.preventDefault()
           event.stopPropagation()
@@ -101,7 +100,7 @@ const FullscreenPresentation = ({
       }
     }
 
-    // Add event listeners to both document and window for better coverage
+
     document.addEventListener('keydown', handleKeyDown, true)
     window.addEventListener('keydown', handleKeyDown, true)
     
@@ -111,12 +110,12 @@ const FullscreenPresentation = ({
     }
   }, [goToNextSlide, goToPrevSlide, exitPresentation, sortedSlides.length])
 
-  // Auto-enter fullscreen when component mounts
+
   useEffect(() => {
     setIsFullscreenEnabled(true)
   }, [])
 
-  // Cleanup on unmount
+
   useEffect(() => {
     return () => {
       setIsFullscreenEnabled(false)
@@ -139,7 +138,7 @@ const FullscreenPresentation = ({
       onChange={handleFullscreenChange}
     >
       <div className="w-full h-full bg-black flex items-center justify-center relative">
-        {/* Exit button */}
+
         <button
           onClick={exitPresentation}
           className="absolute top-4 right-4 z-50 bg-black bg-opacity-50 text-white p-2 rounded-full hover:bg-opacity-70 transition-all"

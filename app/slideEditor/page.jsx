@@ -52,26 +52,26 @@ function SlideEditorContent() {
   const presentationId = searchParams.get('id')
   
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
-  const [isUsersOpen, setIsUsersOpen] = useState(false) // Initially hidden on mobile
+  const [isUsersOpen, setIsUsersOpen] = useState(false) 
   const [currentSlideIndex, setCurrentSlideIndex] = useState(0)
 
-  // Handle responsive initial states
+
   useEffect(() => {
     const handleResize = () => {
-      const isDesktop = window.innerWidth >= 768 // md breakpoint
+      const isDesktop = window.innerWidth >= 768 
       if (isDesktop) {
-        setIsSidebarOpen(true) // Show left sidebar on desktop
-        setIsUsersOpen(true)   // Show collaborator section on desktop
+        setIsSidebarOpen(true) 
+        setIsUsersOpen(true)   
       } else {
-        setIsSidebarOpen(false) // Hide left sidebar on mobile
-        setIsUsersOpen(false)   // Hide collaborator section on mobile
+        setIsSidebarOpen(false) 
+        setIsUsersOpen(false)   
       }
     }
 
-    // Set initial state
+    
     handleResize()
     
-    // Add resize listener
+   
     window.addEventListener('resize', handleResize)
     
     return () => window.removeEventListener('resize', handleResize)
@@ -82,7 +82,7 @@ function SlideEditorContent() {
   const [editingTextBlockId, setEditingTextBlockId] = useState(null)
   const [isUpdatingContent, setIsUpdatingContent] = useState(false)
   const isMounted = useClientMount()
-  // Optimized current slide content state to prevent unnecessary re-renders
+
   const [currentSlideContent, setCurrentSlideContent] = useState(null)
 
   useEffect(() => {
@@ -98,7 +98,7 @@ function SlideEditorContent() {
       return
     }
 
-    // Join the presentation and fetch initial data
+
     const initializePresentation = async () => {
       try {
         await joinPresentation(presentationId, nickname)
@@ -112,7 +112,7 @@ function SlideEditorContent() {
 
     initializePresentation()
 
-    // Subscribe to real-time updates
+
     subscribeToSlideUpdates(presentationId)
 
     return () => {
@@ -120,7 +120,7 @@ function SlideEditorContent() {
     }
   }, [isMounted, hasNickname, presentationId, nickname, router, joinPresentation, fetchSlides, subscribeToSlideUpdates, unsubscribeFromUserUpdates])
 
-  // Memoized slides for rendering - only updates when slide structure changes
+
   const slidesForRendering = useMemo(() => {
     if (!Array.isArray(slides)) return []
     
@@ -131,7 +131,7 @@ function SlideEditorContent() {
     }))
   }, [slides])
 
-  // Sync current slide content with slides array
+
   useEffect(() => {
     if (!Array.isArray(slides) || slides.length === 0) {
       setCurrentSlideContent(null)
@@ -141,11 +141,11 @@ function SlideEditorContent() {
     setCurrentSlideContent(currentSlide?.content_json || null)
   }, [slides, currentSlideIndex])
 
-  // Get current slide safely
+
   const currentSlide = Array.isArray(slides) && slides.length > 0 ? slides[currentSlideIndex] || null : null
   const isCreator = isCurrentUserCreator(presentationId, nickname)
 
-  // Memoized components to prevent unnecessary re-renders
+
   const memoizedPresentButton = useMemo(() => {
     if (!Array.isArray(slidesForRendering) || slidesForRendering.length === 0) return null
     return (
@@ -171,7 +171,7 @@ function SlideEditorContent() {
     setRoleChangeLoading(targetNickname)
     try {
       await updateUserRole(presentationId, targetNickname, newRole, nickname)
-      // Only fetch users, don't reload slides
+
       await fetchPresentationUsers(presentationId)
     } catch (error) {
       logError('Role Update', error)
@@ -222,7 +222,7 @@ function SlideEditorContent() {
     setEditingTextBlockId(null)
   }
 
-  // Text Block Management Functions
+
   const getCurrentSlide = () => {
     if (!Array.isArray(slides) || slides.length === 0) return null
     return slides[currentSlideIndex]
@@ -236,15 +236,14 @@ function SlideEditorContent() {
   const generateTextBlockId = () => `textblock_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
 
   const handleSlideClick = useCallback(async (e) => {
-    // Completely disable slide click for viewers
+
     if (!canEditSlides(presentationId, nickname) || editingTextBlockId) return
     
     const rect = e.currentTarget.getBoundingClientRect()
     const x = e.clientX - rect.left
     const y = e.clientY - rect.top
     
-    // Create new text block with proper positioning for 500x200 size
-    // Center the text block around the click point, but ensure it stays within canvas bounds
+
     const textBlockWidth = 500
     const textBlockHeight = 200
     const canvasWidth = rect.width
@@ -269,7 +268,7 @@ function SlideEditorContent() {
       textBlocks: updatedTextBlocks
     }
     
-    // Optimistic update: immediately update current slide content only
+
     const previousContent = currentSlideContent
     setCurrentSlideContent(updatedContent)
     setSelectedTextBlockId(newTextBlock.id)
@@ -277,10 +276,10 @@ function SlideEditorContent() {
     
     try {
       await updateSlideContent(currentSlide.id, updatedContent, nickname, presentationId)
-      // Note: slides array will be updated automatically via Supabase real-time subscription
+
     } catch (error) {
       logError('Text Block Creation', error)
-      // Revert optimistic update on error
+
       setCurrentSlideContent(previousContent)
       setSelectedTextBlockId(null)
       setEditingTextBlockId(null)
@@ -288,14 +287,14 @@ function SlideEditorContent() {
   }, [canEditSlides, editingTextBlockId, presentationId, nickname, currentSlideContent, currentSlideIndex])
 
   const handleTextBlockSelect = useCallback((textBlockId) => {
-    // Disable text block selection for viewers
+
     if (!canEditSlides(presentationId, nickname)) return
     setSelectedTextBlockId(textBlockId)
     setEditingTextBlockId(null)
   }, [canEditSlides, presentationId, nickname])
 
   const handleTextBlockEdit = useCallback((textBlockId) => {
-    // Disable text block editing for viewers
+
     if (!canEditSlides(presentationId, nickname)) return
     setEditingTextBlockId(textBlockId)
     setSelectedTextBlockId(textBlockId)
@@ -315,13 +314,13 @@ function SlideEditorContent() {
       textBlocks: updatedTextBlocks
     }
     
-    // Optimistic update: immediately update current slide content only
+
     const previousContent = currentSlideContent
     setCurrentSlideContent(updatedContent)
     
     try {
       await updateSlideContent(currentSlide.id, updatedContent, nickname, presentationId)
-      // Note: slides array will be updated automatically via Supabase real-time subscription
+      
     } catch (error) {
       logError('Text Block Position Update', error)
       // Revert optimistic update on error
@@ -343,16 +342,16 @@ function SlideEditorContent() {
       textBlocks: updatedTextBlocks
     }
     
-    // Optimistic update: immediately update current slide content only
+
     const previousContent = currentSlideContent
     setCurrentSlideContent(updatedContent)
     
     try {
       await updateSlideContent(currentSlide.id, updatedContent, nickname, presentationId)
-      // Note: slides array will be updated automatically via Supabase real-time subscription
+
     } catch (error) {
       logError('Text Block Resize', error)
-      // Revert optimistic update on error
+
       setCurrentSlideContent(previousContent)
     }
   }, [canEditSlides, presentationId, nickname, currentSlideContent, currentSlideIndex])
@@ -372,16 +371,16 @@ function SlideEditorContent() {
       textBlocks: updatedTextBlocks
     }
     
-    // Optimistic update: immediately update current slide content only
+
     const previousContent = currentSlideContent
     setCurrentSlideContent(updatedContent)
     
     try {
       await updateSlideContent(currentSlide.id, updatedContent, nickname, presentationId)
-      // Note: slides array will be updated automatically via Supabase real-time subscription
+
     } catch (error) {
       logError('Text Block Content Update', error)
-      // Revert optimistic update on error
+
       setCurrentSlideContent(previousContent)
     } finally {
       setIsUpdatingContent(false)
@@ -392,7 +391,7 @@ function SlideEditorContent() {
     setEditingTextBlockId(null)
   }, [])
 
-  // Handle text block deletion
+
   const handleTextBlockDelete = useCallback(async (textBlockId) => {
     if (!canEditSlides(presentationId, nickname)) return
     
@@ -405,7 +404,7 @@ function SlideEditorContent() {
       textBlocks: updatedTextBlocks
     }
     
-    // Clear selection immediately for better UX
+
     if (selectedTextBlockId === textBlockId) {
       setSelectedTextBlockId(null)
     }
@@ -413,29 +412,29 @@ function SlideEditorContent() {
       setEditingTextBlockId(null)
     }
     
-    // Optimistic update: immediately update current slide content only
+
     const previousContent = currentSlideContent
     setCurrentSlideContent(updatedContent)
     
     try {
       await updateSlideContent(currentSlide.id, updatedContent, nickname, presentationId)
-      // Note: slides array will be updated automatically via Supabase real-time subscription
+
     } catch (error) {
       logError('Text Block Deletion', error)
-      // Revert optimistic update on error
+
       setCurrentSlideContent(previousContent)
     }
   }, [canEditSlides, presentationId, nickname, currentSlideContent, currentSlideIndex, selectedTextBlockId, editingTextBlockId])
 
-  // Handle clicks outside text blocks
+
   const handleOutsideClick = useCallback(() => {
-    // Only allow deselection for editors/creators
+
     if (!editingTextBlockId && canEditSlides(presentationId, nickname)) {
       setSelectedTextBlockId(null)
     }
   }, [editingTextBlockId, canEditSlides, presentationId, nickname])
 
-  // Get canvas rect for boundary constraints
+
   const [canvasRect, setCanvasRect] = useState(null)
   
   useEffect(() => {
@@ -461,7 +460,7 @@ function SlideEditorContent() {
   if (!isMounted || !hasNickname() || !presentationId) {
     return (
       <div className="h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-indigo-50/50 flex flex-col relative overflow-hidden">
-        {/* Animated background elements */}
+
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
           <div className="absolute -top-40 -right-40 w-80 h-80 bg-gradient-to-br from-blue-400/20 to-purple-400/20 rounded-full blur-3xl animate-pulse"></div>
           <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-gradient-to-tr from-indigo-400/20 to-cyan-400/20 rounded-full blur-3xl animate-pulse delay-1000"></div>
@@ -495,13 +494,13 @@ function SlideEditorContent() {
 
   return (
     <div className="h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-indigo-50/50 flex flex-col relative overflow-hidden">
-      {/* Animated background elements */}
+
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute -top-40 -right-40 w-80 h-80 bg-gradient-to-br from-blue-400/20 to-purple-400/20 rounded-full blur-3xl animate-pulse"></div>
         <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-gradient-to-tr from-indigo-400/20 to-cyan-400/20 rounded-full blur-3xl animate-pulse delay-1000"></div>
       </div>
       
-      {/* Top Toolbar */}
+
       <div className="relative h-16 bg-white/80 backdrop-blur-xl border-b border-slate-200/60 flex items-center px-2 md:px-6 justify-between shadow-lg shadow-slate-200/50">
         <div className="absolute inset-0 bg-gradient-to-r from-blue-500/5 via-purple-500/5 to-indigo-500/5"></div>
         <div className="relative flex items-center space-x-4">
@@ -514,7 +513,7 @@ function SlideEditorContent() {
             <ArrowLeft className="w-5 h-5 text-slate-700" />
           </Button>
           <div className="flex items-center min-w-0 flex-1 gap-2">
-            {/* Mobile slide toggle icon */}
+
             <Button
               onClick={() => setIsSidebarOpen(!isSidebarOpen)}
               variant="ghost"
@@ -532,7 +531,7 @@ function SlideEditorContent() {
                     {currentPresentation?.name || 'Slide Editor'}
                   </span>
                 </h1>
-                {/* Only show View Only badge when users are loaded and user is confirmed as viewer */}
+
                 {users.length > 0 && !canEditSlides(presentationId, nickname) && (
                   <Badge variant="secondary" className="flex items-center gap-1 bg-gradient-to-r from-blue-100 to-blue-200 text-blue-800 border-blue-300/60 shadow-lg shadow-blue-200/30 font-semibold">
                     <Eye className="w-3 h-3 drop-shadow-sm" />
@@ -542,7 +541,7 @@ function SlideEditorContent() {
               </div>
               {currentPresentation?.creator_nickname && (
                 <p className="text-xs bg-gradient-to-r from-slate-600 to-slate-500 bg-clip-text text-transparent truncate hidden sm:block font-medium tracking-wide">
-                  <span className="hover:from-blue-600 hover:to-purple-600 transition-all duration-300 cursor-default">
+                  <span className="hover:from-blue-600 hover:to-purple-600 transition-all duration-300 cursor-default font-bold">
                     Created by {currentPresentation.creator_nickname}
                   </span>
                 </p>
@@ -552,10 +551,10 @@ function SlideEditorContent() {
         </div>
         
         <div className="relative flex items-center space-x-2">
-          {/* Present Button - memoized to prevent re-renders */}
+
           {memoizedPresentButton}
           
-          {/* Mobile toggle buttons */}
+
           <Button
             onClick={() => setIsUsersOpen(!isUsersOpen)}
             variant="ghost"
@@ -564,7 +563,7 @@ function SlideEditorContent() {
           >
             <Users className="w-4 h-4 text-purple-700" />
           </Button>
-          {/* Enhanced User Display with Logout */}
+
           <div className="hidden md:flex items-center space-x-3">
             <div className="flex items-center space-x-2 bg-gradient-to-r from-blue-50 via-indigo-50 to-purple-50 border border-blue-200/60 rounded-xl px-4 py-2.5 shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105 backdrop-blur-sm">
               <div className="w-7 h-7 bg-gradient-to-br from-blue-500 via-indigo-500 to-purple-600 rounded-full flex items-center justify-center shadow-lg shadow-blue-500/30">
@@ -583,7 +582,7 @@ function SlideEditorContent() {
             </Button>
           </div>
           
-          {/* Mobile User Menu */}
+
           <div className="md:hidden">
             <Button
               onClick={handleLogout}
@@ -598,9 +597,9 @@ function SlideEditorContent() {
         </div>
       </div>
 
-      {/* Main Content Area */}
+
       <div className="relative flex-1 flex overflow-hidden">
-        {/* Left Slides Thumbnails Panel */}
+
         <div className={`${isSidebarOpen ? 'w-64' : 'w-0'} md:${isSidebarOpen ? 'w-64' : 'w-0'} bg-white/60 backdrop-blur-xl border-r border-slate-200/60 transition-all duration-300 overflow-hidden shadow-lg`}>
           <div className="absolute inset-0 bg-gradient-to-b from-blue-50/30 via-transparent to-purple-50/30"></div>
           <div className="relative h-full">
@@ -616,9 +615,9 @@ function SlideEditorContent() {
           </div>
         </div>
 
-        {/* Center Main Slide Canvas */}
+
         <div className="relative flex-1 bg-gradient-to-br from-slate-50 via-blue-50/40 to-indigo-50/60 flex items-center justify-center p-2 md:p-6 overflow-hidden" onClick={handleOutsideClick}>
-          {/* Animated background elements */}
+
           <div className="absolute inset-0 overflow-hidden pointer-events-none">
             <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-gradient-to-br from-blue-400/15 to-purple-400/15 rounded-full blur-3xl animate-pulse"></div>
             <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-gradient-to-tr from-indigo-400/15 to-cyan-400/15 rounded-full blur-3xl animate-pulse delay-1000"></div>
@@ -640,7 +639,7 @@ function SlideEditorContent() {
                     style={{ minHeight: '600px' }}
                     data-slide-container="true"
                   >
-                    {/* Enhanced grid pattern with depth */}
+
                     <div className="absolute inset-0 opacity-25 pointer-events-none">
                       <div className="w-full h-full" style={{
                         backgroundImage: `
@@ -653,11 +652,11 @@ function SlideEditorContent() {
                       }}></div>
                     </div>
                     
-                    {/* Subtle corner highlights */}
+
                     <div className="absolute top-0 left-0 w-32 h-32 bg-gradient-to-br from-blue-100/40 to-transparent rounded-xl pointer-events-none"></div>
                     <div className="absolute bottom-0 right-0 w-32 h-32 bg-gradient-to-tl from-purple-100/40 to-transparent rounded-xl pointer-events-none"></div>
 
-                    {/* Loading Indicator */}
+
                     {isUpdatingContent && (
                       <Badge variant="secondary" className="absolute top-4 right-4 z-10 flex items-center gap-2 bg-gradient-to-r from-blue-100 to-blue-200 text-blue-800 border-blue-300/60 shadow-lg shadow-blue-200/30 font-semibold">
                         <div className="w-3 h-3 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
@@ -666,7 +665,7 @@ function SlideEditorContent() {
                       </Badge>
                     )}
 
-                    {/* Text Blocks */}
+
                     {getTextBlocks().map((textBlock, index) => (
                       <TextBlock
                         key={textBlock.id}
@@ -691,7 +690,7 @@ function SlideEditorContent() {
                       />
                     ))}
 
-                    {/* Enhanced Empty State */}
+
                     {getTextBlocks().length === 0 && (
                       <div className="absolute inset-0 flex items-center justify-center">
                         <div className="text-center relative">
@@ -716,7 +715,7 @@ function SlideEditorContent() {
                     className="w-full h-full relative cursor-default bg-gradient-to-br from-white via-slate-50/40 to-blue-50/30 text-sm md:text-base border border-white/80 rounded-xl shadow-inner"
                     style={{ minHeight: '600px' }}
                   >
-                    {/* Enhanced grid pattern for read-only with subtle depth */}
+
                     <div className="absolute inset-0 opacity-15 pointer-events-none">
                       <div className="w-full h-full" style={{
                         backgroundImage: `
@@ -729,11 +728,11 @@ function SlideEditorContent() {
                       }}></div>
                     </div>
                     
-                    {/* Subtle corner highlights for read-only */}
+
                     <div className="absolute top-0 left-0 w-32 h-32 bg-gradient-to-br from-slate-100/30 to-transparent rounded-xl pointer-events-none"></div>
                     <div className="absolute bottom-0 right-0 w-32 h-32 bg-gradient-to-tl from-slate-100/30 to-transparent rounded-xl pointer-events-none"></div>
                     
-                    {/* Text Blocks - Read Only */}
+
                     {getTextBlocks().map((textBlock, index) => (
                       <TextBlock
                         key={textBlock.id}
@@ -758,7 +757,7 @@ function SlideEditorContent() {
                       />
                     ))}
 
-                    {/* Enhanced Empty State for Viewers */}
+
                     {getTextBlocks().length === 0 && (
                       <div className="absolute inset-0 flex items-center justify-center">
                         <div className="text-center relative">
