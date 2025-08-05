@@ -196,7 +196,7 @@ export default function Home() {
           <div className="text-center">
             <p className="text-sm text-gray-500">
               <span className="bg-gradient-to-r from-gray-600 via-gray-500 to-gray-600 bg-clip-text text-transparent hover:from-blue-500 hover:via-purple-500 hover:to-indigo-500 transition-all duration-300 cursor-default">
-                ✨ No registration required - just enter your nickname and start creating
+                 No registration required - just enter your nickname and start creating
               </span>
             </p>
           </div>
