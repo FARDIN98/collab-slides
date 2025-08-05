@@ -166,30 +166,26 @@ const FullscreenPresentation = ({
                     position: 'absolute',
                     left: textBlock.position?.x || 0,
                     top: textBlock.position?.y || 0,
-                    width: textBlock.size?.width || 300,
-                    height: textBlock.size?.height || 200,
                     zIndex: 100 + index,
                   }}
-                  className="p-2 rounded-lg overflow-hidden"
+                  className="p-2"
                 >
                   {textBlock.content ? (
                     <div 
-                      className="w-full h-full text-gray-800 break-words word-wrap leading-tight overflow-hidden"
+                      className="text-gray-900 break-words"
                       style={{ 
-                        wordWrap: 'break-word',
-                        overflowWrap: 'anywhere',
-                        hyphens: 'auto',
-                        fontSize: `${Math.max(12, Math.min(24, Math.min((textBlock.size?.width || 300) / 15, (textBlock.size?.height || 200) / 4)))}px`,
-                        lineHeight: '1.2',
-                        display: 'block'
+                        fontSize: '24px',
+                        lineHeight: '1.4',
+                        fontWeight: '500',
+                        color: '#1f2937'
                       }}
                       dangerouslySetInnerHTML={{
                         __html: textBlock.content
-                          .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-                          .replace(/\*(.*?)\*/g, '<em>$1</em>')
-                          .replace(/__(.*?)__/g, '<u>$1</u>')
-                          .replace(/`(.*?)`/g, '<code style="word-break: break-all; font-size: inherit; background: rgba(0,0,0,0.1); padding: 1px 3px; border-radius: 3px;">$1</code>')
-                          .replace(/!\[(.*?)\]\((.*?)\)/g, '<img alt="$1" src="$2" style="max-width: 100%; max-height: 100%; width: auto; height: auto; display: block; object-fit: contain; margin: 2px 0; border-radius: 4px;" />')
+                          .replace(/\*\*(.*?)\*\*/g, '<strong style="font-weight: 700; color: #111827;">$1</strong>')
+                          .replace(/\*(.*?)\*/g, '<em style="font-style: italic; color: #374151;">$1</em>')
+                          .replace(/__(.*?)__/g, '<u style="text-decoration: underline; color: #374151;">$1</u>')
+                          .replace(/`(.*?)`/g, '<code style="background: rgba(0,0,0,0.1); padding: 2px 4px; border-radius: 4px; font-family: monospace; color: #1f2937;">$1</code>')
+                          .replace(/!\[(.*?)\]\((.*?)\)/g, '<img alt="$1" src="$2" style="max-width: 300px; height: auto; display: block; margin: 4px 0; border-radius: 6px;" />')
                           .replace(/\n/g, '<br>')
                       }}
                     />
@@ -233,6 +229,8 @@ const FullscreenPresentation = ({
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                     </svg>
                     <p className="text-2xl mb-2">No content on this slide</p>
+                    <p className="text-lg text-gray-500">Add text blocks or images in the editor</p>
+                    <p className="text-sm text-gray-400 mt-2">Slide {currentSlideIndex + 1} of {sortedSlides.length}</p>
                   </div>
                 </div>
               )}
