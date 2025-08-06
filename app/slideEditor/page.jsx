@@ -84,6 +84,8 @@ function SlideEditorContent() {
   const isMounted = useClientMount()
 
   const [currentSlideContent, setCurrentSlideContent] = useState(null)
+  const [scrollContainerRef, setScrollContainerRef] = useState(null)
+  const [isScrolling, setIsScrolling] = useState(false)
 
   useEffect(() => {
     if (!isMounted) return
@@ -220,7 +222,53 @@ function SlideEditorContent() {
     setCurrentSlideIndex(index)
     setSelectedTextBlockId(null)
     setEditingTextBlockId(null)
+    
+    // Smooth scroll to the selected slide
+    if (scrollContainerRef && !isScrolling) {
+      const slideHeight = 600
+      const targetScrollTop = index * slideHeight
+      setIsScrolling(true)
+      scrollContainerRef.scrollTo({
+        top: targetScrollTop,
+        behavior: 'smooth'
+      })
+      
+      // Reset scrolling flag after animation
+      setTimeout(() => setIsScrolling(false), 500)
+    }
   }
+
+  // Debounced scroll handler for sync with sidebar
+  const handleScroll = useCallback(() => {
+    if (!scrollContainerRef || isScrolling) return
+    
+    const slideHeight = 600
+    const scrollTop = scrollContainerRef.scrollTop
+    const newSlideIndex = Math.round(scrollTop / slideHeight)
+    
+    if (newSlideIndex !== currentSlideIndex && newSlideIndex >= 0 && newSlideIndex < slides.length) {
+      setCurrentSlideIndex(newSlideIndex)
+      setSelectedTextBlockId(null)
+      setEditingTextBlockId(null)
+    }
+  }, [scrollContainerRef, isScrolling, currentSlideIndex, slides.length])
+
+  // Debounce scroll events
+  useEffect(() => {
+    if (!scrollContainerRef) return
+    
+    let timeoutId
+    const debouncedHandleScroll = () => {
+      clearTimeout(timeoutId)
+      timeoutId = setTimeout(handleScroll, 100)
+    }
+    
+    scrollContainerRef.addEventListener('scroll', debouncedHandleScroll)
+    return () => {
+      scrollContainerRef.removeEventListener('scroll', debouncedHandleScroll)
+      clearTimeout(timeoutId)
+    }
+  }, [scrollContainerRef, handleScroll])
 
 
   const getCurrentSlide = () => {
@@ -235,7 +283,7 @@ function SlideEditorContent() {
 
   const generateTextBlockId = () => `textblock_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
 
-  const handleSlideClick = useCallback(async (e) => {
+  const handleSlideClick = useCallback(async (e, slideIndex) => {
 
     if (!canEditSlides(presentationId, nickname) || editingTextBlockId) return
     
@@ -259,32 +307,40 @@ function SlideEditorContent() {
       size: { width: textBlockWidth, height: textBlockHeight }
     }
     
-    const currentSlide = getCurrentSlide()
-    const currentTextBlocks = getTextBlocks()
+    // Use the clicked slide index instead of current slide index
+    const targetSlide = slides[slideIndex]
+    const targetSlideContent = slideIndex === currentSlideIndex ? currentSlideContent : targetSlide?.content_json
+    const currentTextBlocks = targetSlideContent?.textBlocks || []
     const updatedTextBlocks = [...currentTextBlocks, newTextBlock]
     
     const updatedContent = {
-      ...currentSlideContent,
+      ...targetSlideContent,
       textBlocks: updatedTextBlocks
     }
     
 
-    const previousContent = currentSlideContent
-    setCurrentSlideContent(updatedContent)
+    const previousContent = targetSlideContent
+    // Update the specific slide content
+    if (slideIndex === currentSlideIndex) {
+      setCurrentSlideContent(updatedContent)
+    }
     setSelectedTextBlockId(newTextBlock.id)
     setEditingTextBlockId(newTextBlock.id)
+    setCurrentSlideIndex(slideIndex)
     
     try {
-      await updateSlideContent(currentSlide.id, updatedContent, nickname, presentationId)
+      await updateSlideContent(targetSlide.id, updatedContent, nickname, presentationId)
 
     } catch (error) {
       logError('Text Block Creation', error)
 
-      setCurrentSlideContent(previousContent)
+      if (slideIndex === currentSlideIndex) {
+        setCurrentSlideContent(previousContent)
+      }
       setSelectedTextBlockId(null)
       setEditingTextBlockId(null)
     }
-  }, [canEditSlides, editingTextBlockId, presentationId, nickname, currentSlideContent, currentSlideIndex])
+  }, [canEditSlides, editingTextBlockId, presentationId, nickname, currentSlideContent, currentSlideIndex, slides])
 
   const handleTextBlockSelect = useCallback((textBlockId) => {
 
@@ -631,14 +687,25 @@ function SlideEditorContent() {
             <div className="absolute inset-0 bg-gradient-to-br from-blue-50/30 via-white/20 to-purple-50/30 pointer-events-none"></div>
             <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/40 to-transparent pointer-events-none"></div>
             <CardContent className="relative p-0 h-full">
-              {currentSlide ? (
-                canEditSlides(presentationId, nickname) ? (
-                  <div 
-                    className="w-full h-full relative cursor-pointer bg-gradient-to-br from-white via-slate-50/40 to-blue-50/30 text-sm md:text-base border border-white/80 rounded-xl shadow-inner"
-                    onClick={handleSlideClick}
-                    style={{ minHeight: '600px' }}
-                    data-slide-container="true"
-                  >
+              <div 
+                ref={setScrollContainerRef}
+                className="w-full h-full overflow-y-auto scroll-smooth"
+                style={{ scrollBehavior: 'smooth' }}
+              >
+              {slides.length > 0 ? (
+                slides.map((slide, slideIndex) => {
+                  const slideContent = slideIndex === currentSlideIndex ? currentSlideContent : slide.content_json
+                  const slideTextBlocks = slideContent?.textBlocks || []
+                  
+                  return (
+                    <div key={slide.id} className="relative">
+                      {canEditSlides(presentationId, nickname) ? (
+                        <div 
+                          className="w-full relative cursor-pointer bg-gradient-to-br from-white via-slate-50/40 to-blue-50/30 text-sm md:text-base border-2 rounded-xl shadow-inner transition-all duration-200 border-white/80 hover:border-gray-300"
+                          onClick={(e) => handleSlideClick(e, slideIndex)}
+                          style={{ height: '600px', minHeight: '600px' }}
+                          data-slide-container="true"
+                        >
 
                     <div className="absolute inset-0 opacity-25 pointer-events-none">
                       <div className="w-full h-full" style={{
@@ -666,55 +733,57 @@ function SlideEditorContent() {
                     )}
 
 
-                    {getTextBlocks().map((textBlock, index) => (
-                      <TextBlock
-                        key={textBlock.id}
-                        id={textBlock.id}
-                        content={textBlock.content}
-                        position={textBlock.position}
-                        size={textBlock.size}
-                        isSelected={selectedTextBlockId === textBlock.id}
-                        isEditing={editingTextBlockId === textBlock.id}
-                        canEdit={canEditSlides(presentationId, nickname)}
-                        onSelect={handleTextBlockSelect}
-                        onEdit={handleTextBlockEdit}
-                        onMove={handleTextBlockMove}
-                        onResize={handleTextBlockResize}
-                        onContentChange={handleTextBlockContentChange}
-                        onStopEditing={handleStopEditing}
-                        onDelete={handleTextBlockDelete}
-                        zIndex={100 + index}
-                        canvasRect={canvasRect}
-                        allTextBlocks={getTextBlocks()}
-                        presentationId={presentationId}
-                      />
-                    ))}
 
 
-                    {getTextBlocks().length === 0 && (
-                      <div className="absolute inset-0 flex items-center justify-center">
-                        <div className="text-center relative">
-                          <div className="absolute inset-0 bg-gradient-to-br from-blue-100/50 to-purple-100/50 rounded-full blur-3xl scale-150 opacity-60"></div>
-                          <div className="relative">
-                            <MousePointer2 className="w-20 h-20 mx-auto mb-6 text-slate-400 drop-shadow-lg animate-pulse" />
-                            <p className="text-xl mb-3 font-bold bg-gradient-to-r from-slate-700 via-blue-600 to-slate-700 bg-clip-text text-transparent tracking-wide">
-                              {canEditSlides(presentationId, nickname) ? 'Click anywhere to add text' : 'No content yet'}
-                            </p>
-                            {canEditSlides(presentationId, nickname) && (
-                              <p className="text-sm bg-gradient-to-r from-slate-500 to-slate-400 bg-clip-text text-transparent font-medium tracking-wide">
-                                Click to create • Drag to move • Double-click to edit
-                              </p>
-                            )}
-                          </div>
+                          {slideTextBlocks.map((textBlock, index) => (
+                            <TextBlock
+                              key={textBlock.id}
+                              id={textBlock.id}
+                              content={textBlock.content}
+                              position={textBlock.position}
+                              size={textBlock.size}
+                              isSelected={selectedTextBlockId === textBlock.id && slideIndex === currentSlideIndex}
+                              isEditing={editingTextBlockId === textBlock.id && slideIndex === currentSlideIndex}
+                              canEdit={canEditSlides(presentationId, nickname)}
+                              onSelect={handleTextBlockSelect}
+                              onEdit={handleTextBlockEdit}
+                              onMove={handleTextBlockMove}
+                              onResize={handleTextBlockResize}
+                              onContentChange={handleTextBlockContentChange}
+                              onStopEditing={handleStopEditing}
+                              onDelete={handleTextBlockDelete}
+                              zIndex={100 + index}
+                              canvasRect={canvasRect}
+                              allTextBlocks={slideTextBlocks}
+                              presentationId={presentationId}
+                            />
+                          ))}
+
+
+                          {slideTextBlocks.length === 0 && (
+                            <div className="absolute inset-0 flex items-center justify-center">
+                              <div className="text-center relative">
+                                <div className="absolute inset-0 bg-gradient-to-br from-blue-100/50 to-purple-100/50 rounded-full blur-3xl scale-150 opacity-60"></div>
+                                <div className="relative">
+                                  <MousePointer2 className="w-20 h-20 mx-auto mb-6 text-slate-400 drop-shadow-lg animate-pulse" />
+                                  <p className="text-xl mb-3 font-bold bg-gradient-to-r from-slate-700 via-blue-600 to-slate-700 bg-clip-text text-transparent tracking-wide">
+                                    {canEditSlides(presentationId, nickname) ? 'Click anywhere to add text' : 'No content yet'}
+                                  </p>
+                                  {canEditSlides(presentationId, nickname) && (
+                                    <p className="text-sm bg-gradient-to-r from-slate-500 to-slate-400 bg-clip-text text-transparent font-medium tracking-wide">
+                                      Click to create • Drag to move • Double-click to edit
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          )}
                         </div>
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <div 
-                    className="w-full h-full relative cursor-default bg-gradient-to-br from-white via-slate-50/40 to-blue-50/30 text-sm md:text-base border border-white/80 rounded-xl shadow-inner"
-                    style={{ minHeight: '600px' }}
-                  >
+                      ) : (
+                        <div 
+                          className="w-full relative cursor-default bg-gradient-to-br from-white via-slate-50/40 to-blue-50/30 text-sm md:text-base border-2 rounded-xl shadow-inner transition-all duration-200 border-white/80"
+                          style={{ height: '600px', minHeight: '600px' }}
+                        >
 
                     <div className="absolute inset-0 opacity-15 pointer-events-none">
                       <div className="w-full h-full" style={{
@@ -733,45 +802,50 @@ function SlideEditorContent() {
                     <div className="absolute bottom-0 right-0 w-32 h-32 bg-gradient-to-tl from-slate-100/30 to-transparent rounded-xl pointer-events-none"></div>
                     
 
-                    {getTextBlocks().map((textBlock, index) => (
-                      <TextBlock
-                        key={textBlock.id}
-                        id={textBlock.id}
-                        content={textBlock.content}
-                        position={textBlock.position}
-                        size={textBlock.size}
-                        isSelected={false}
-                        isEditing={false}
-                        canEdit={false}
-                        onSelect={() => {}}
-                        onEdit={() => {}}
-                        onMove={() => {}}
-                        onResize={() => {}}
-                        onContentChange={() => {}}
-                        onStopEditing={() => {}}
-                        onDelete={() => {}}
-                        zIndex={100 + index}
-                        canvasRect={canvasRect}
-                        allTextBlocks={getTextBlocks()}
-                        presentationId={presentationId}
-                      />
-                    ))}
 
 
-                    {getTextBlocks().length === 0 && (
-                      <div className="absolute inset-0 flex items-center justify-center">
-                        <div className="text-center relative">
-                          <div className="absolute inset-0 bg-gradient-to-br from-blue-100/40 to-purple-100/40 rounded-full blur-3xl scale-150 opacity-50"></div>
-                          <div className="relative">
-                            <Eye className="w-20 h-20 mx-auto mb-6 text-slate-400 drop-shadow-lg animate-pulse" />
-                            <p className="text-xl mb-3 font-bold bg-gradient-to-r from-slate-700 via-blue-600 to-slate-700 bg-clip-text text-transparent tracking-wide">No content yet</p>
-                            <p className="text-sm bg-gradient-to-r from-slate-500 to-slate-400 bg-clip-text text-transparent font-medium tracking-wide">You are viewing this presentation in read-only mode</p>
-                          </div>
+                          {slideTextBlocks.map((textBlock, index) => (
+                            <TextBlock
+                              key={textBlock.id}
+                              id={textBlock.id}
+                              content={textBlock.content}
+                              position={textBlock.position}
+                              size={textBlock.size}
+                              isSelected={false}
+                              isEditing={false}
+                              canEdit={false}
+                              onSelect={() => {}}
+                              onEdit={() => {}}
+                              onMove={() => {}}
+                              onResize={() => {}}
+                              onContentChange={() => {}}
+                              onStopEditing={() => {}}
+                              onDelete={() => {}}
+                              zIndex={100 + index}
+                              canvasRect={canvasRect}
+                              allTextBlocks={slideTextBlocks}
+                              presentationId={presentationId}
+                            />
+                          ))}
+
+
+                          {slideTextBlocks.length === 0 && (
+                            <div className="absolute inset-0 flex items-center justify-center">
+                              <div className="text-center relative">
+                                <div className="absolute inset-0 bg-gradient-to-br from-blue-100/40 to-purple-100/40 rounded-full blur-3xl scale-150 opacity-50"></div>
+                                <div className="relative">
+                                  <Eye className="w-20 h-20 mx-auto mb-6 text-slate-400 drop-shadow-lg animate-pulse" />
+                                  <p className="text-xl mb-3 font-bold bg-gradient-to-r from-slate-700 via-blue-600 to-slate-700 bg-clip-text text-transparent tracking-wide">No content yet</p>
+                                  <p className="text-sm bg-gradient-to-r from-slate-500 to-slate-400 bg-clip-text text-transparent font-medium tracking-wide">You are viewing this presentation in read-only mode</p>
+                                </div>
+                              </div>
+                            </div>
+                          )}
                         </div>
-                      </div>
-                    )}
-                  </div>
-                )
+                      )}
+                    </div>
+                  )
+                })
               ) : (
                 <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-white via-slate-50/30 to-blue-50/20 border border-slate-100/50 rounded-lg">
                   <div className="text-center relative">
@@ -780,11 +854,12 @@ function SlideEditorContent() {
                       <div className="w-20 h-20 mx-auto mb-6 rounded-xl bg-gradient-to-br from-slate-200 to-slate-300 flex items-center justify-center shadow-lg">
                         <div className="w-10 h-10 border-3 border-slate-400/40 rounded-lg shadow-inner"></div>
                       </div>
-                      <p className="text-lg font-bold bg-gradient-to-r from-slate-700 via-blue-600 to-slate-700 bg-clip-text text-transparent tracking-wide">No slide selected</p>
+                      <p className="text-lg font-bold bg-gradient-to-r from-slate-700 via-blue-600 to-slate-700 bg-clip-text text-transparent tracking-wide">No slides available</p>
                     </div>
                   </div>
                 </div>
               )}
+              </div>
             </CardContent>
           </Card>
         </div>
